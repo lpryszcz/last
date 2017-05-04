@@ -33,7 +33,8 @@ public:
   // "bad" state and throw an Sls::error.
   // These arguments are only used to lookup pre-calculated cases:
   // matrixName, matchScore, mismatchCost, isStandardGeneticCode.
-  // DNA-versus-protein alignment is indicated by: frameshiftCost > 0.
+  // DNA-versus-protein alignment is indicated by: frameshiftCost >= 0.
+  // As a special case, frameshiftCost==0 means no frameshifts.
   // For DNA-versus-protein alignment, letterFreqs2 is not used.
   void init(const char *matrixName,
 	    int matchScore,

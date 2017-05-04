@@ -30,7 +30,7 @@ namespace cbrc{
 
 class SubsetSuffixArray{
 public:
-  typedef unsigned indexT;
+  typedef LAST_INT_TYPE indexT;
 
   CyclicSubsetSeed& getSeed() { return seed; }
   const CyclicSubsetSeed& getSeed() const { return seed; }
@@ -38,20 +38,20 @@ public:
   // Add every step-th text position in the range [beg,end).
   // Positions starting with delimiters aren't added.
   // The positions aren't sorted.
-  void addPositions( const uchar* text, indexT beg, indexT end, indexT step );
+  // If minimizerWindow > 1 then the positions are added only if they
+  // are "minimizers" for the given window and seed pattern.
+  void addPositions( const uchar* text, indexT beg, indexT end,
+		     size_t step, size_t minimizerWindow );
 
   // Sort the suffix array (but don't make the buckets).
   void sortIndex( const uchar* text,
-		  indexT maxUnsortedInterval, int childTableType );
+		  size_t maxUnsortedInterval, int childTableType );
 
   // Make the buckets.  If bucketDepth+1 == 0, then a default
   // bucketDepth is used.  The default is: the maximum possible
   // bucketDepth such that the number of bucket entries is at most 1/4
   // the number of suffix array entries.
-  void makeBuckets( const uchar* text, indexT bucketDepth );
-
-  // Clear the positions, so we can add new positions from scratch.
-  void clearPositions();
+  void makeBuckets( const uchar* text, unsigned bucketDepth );
 
   void fromFiles( const std::string& baseName,
 		  bool isMaskLowercase, const uchar letterCode[] );
@@ -66,13 +66,13 @@ public:
   // via begPtr and endPtr.
   void match( const indexT*& begPtr, const indexT*& endPtr,
               const uchar* queryPtr, const uchar* text,
-              indexT maxHits, indexT minDepth, indexT maxDepth ) const;
+              size_t maxHits, size_t minDepth, size_t maxDepth ) const;
 
   // Count matches of all sizes (up to maxDepth), starting at the
   // given position in the query.
   void countMatches( std::vector<unsigned long long>& counts,
 		     const uchar* queryPtr, const uchar* text,
-		     indexT maxDepth ) const;
+		     size_t maxDepth ) const;
 
 private:
   CyclicSubsetSeed seed;
@@ -113,9 +113,9 @@ private:
 		      const uchar* textBase, const uchar* subsetMap ) const;
 
   // Return the maximum prefix size covered by the buckets.
-  indexT maxBucketPrefix() const { return bucketSteps.size() - 1; }
+  size_t maxBucketPrefix() const { return bucketSteps.size() - 1; }
 
-  indexT defaultBucketDepth();
+  unsigned defaultBucketDepth();
 
   void makeBucketSteps( indexT bucketDepth );
 

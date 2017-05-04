@@ -32,15 +32,15 @@ Suppose we have paired DNA reads in a file called "interleaved.fastq"
 next two reads are paired, and so on.  We can align them to the human
 genome like this::
 
-  lastdb -uNEAR hg human-genome.fasta
-  lastal -Q1 -e120 -i1 hg interleaved.fastq > temp.maf
+  lastdb -uNEAR -R01 hg human-genome.fasta
+  lastal -Q1 -D1000 -i1 hg interleaved.fastq > temp.maf
   last-pair-probs temp.maf > out.maf
 
 Suppose we have paired reads in two files, where the two first reads
 are paired, the two second reads are paired, and so on.  We can
 interleave them like this::
 
-  fastq-interleave x.fastq y.fastq | lastal -Q1 -e120 -i1 hg > temp.maf
+  fastq-interleave x.fastq y.fastq | lastal -Q1 -D1000 -i1 hg > temp.maf
 
 Reads from potentially-spliced RNA molecules
 --------------------------------------------
@@ -63,13 +63,13 @@ distribution, and then to estimate alignment probabilities.  It is
 more efficient to estimate the distance distribution from a small
 sample of the data::
 
-  lastal -Q1 -e120 -i1 hg sample.fastq | last-pair-probs -e
+  lastal -Q1 -D1000 -i1 hg sample.fastq | last-pair-probs -e
 
 Suppose this tells us that the mean distance is 250 and the standard
 deviation is 38.5.  We can use that to estimate the alignment
 probabilities::
 
-  lastal -Q1 -e120 -i1 hg all.fastq | last-pair-probs -f250 -s38.5 > out.maf
+  lastal -Q1 -D1000 -i1 hg all.fastq | last-pair-probs -f250 -s38.5 > out.maf
 
 Going faster by parallelization
 -------------------------------
@@ -77,7 +77,7 @@ Going faster by parallelization
 This will run the pipeline on all your CPU cores::
 
   fastq-interleave x.fastq y.fastq |
-  parallel-fastq "lastal -Q1 -e120 -i1 hg | last-pair-probs -f250 -s38.5" > out.maf
+  parallel-fastq "lastal -Q1 -D1000 -i1 hg | last-pair-probs -f250 -s38.5" > out.maf
 
 It requires GNU parallel to be installed
 (http://www.gnu.org/software/parallel/).
@@ -105,8 +105,8 @@ Details
 
 * It is also possible to supply the alignments in two files::
 
-    lastal -Q1 -e120 -i1 hg x.fastq > temp1.maf
-    lastal -Q1 -e120 -i1 hg y.fastq > temp2.maf
+    lastal -Q1 -D1000 -i1 hg x.fastq > temp1.maf
+    lastal -Q1 -D1000 -i1 hg y.fastq > temp2.maf
     last-pair-probs temp1.maf temp2.maf > out.maf
 
 Options

@@ -15,13 +15,15 @@
 
 #ifndef DIAGONALTABLE_HH
 #define DIAGONALTABLE_HH
+
+#include <stddef.h>
 #include <utility>  // pair
 #include <vector>
 
 namespace cbrc{
 
 struct DiagonalTable{
-  typedef unsigned indexT;
+  typedef LAST_INT_TYPE indexT;
   typedef std::pair<indexT, indexT> pairT;
 
   enum { BINS = 256 };  // use a power-of-two for faster modulus (maybe)
@@ -36,5 +38,6 @@ struct DiagonalTable{
   std::vector<pairT> hits[BINS];
 };
 
-}  // end namespace cbrc
-#endif  // DIAGONALTABLE_HH
+}
+
+#endif

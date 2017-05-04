@@ -206,13 +206,6 @@ namespace Sls {
 		double &E_error_,
 
 		double &area_,
-
-		double a_normal_,
-		double b_normal_,
-		double h_normal_,
-		long int N_normal_,
-		double *p_normal_,
-
 		bool &area_is_1_flag_);
 
 		static void compute_tmp_values(FALP_set_of_parameters &par_);
@@ -229,13 +222,6 @@ namespace Sls {
 		double &E_,
 
 		double &area_,
-
-		double a_normal_,
-		double b_normal_,
-		double h_normal_,
-		long int N_normal_,
-		double *p_normal_,
-
 		bool &area_is_1_flag_,
 		bool compute_only_area_=false);
 
@@ -252,13 +238,6 @@ namespace Sls {
 
 		double &E_,
 		double &E_error_,
-
-
-		double a_normal_,
-		double b_normal_,
-		double h_normal_,
-		long int N_normal_,
-		double *p_normal_,
 
 		bool &area_is_1_flag_);
 

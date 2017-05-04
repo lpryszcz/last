@@ -15,8 +15,8 @@ The usage is like this::
   last-train mydb queries.fasta
 
 last-train prints a summary of each alignment step, followed by the
-final score parameters in a format that can be read by lastal's -p
-option.
+final score parameters in a format that can be read by `lastal's -p
+option <lastal.html#score-options>`_.
 
 Options
 -------
@@ -40,6 +40,17 @@ Training options
          Ignore alignments with > PID% identity.  This aims to
          optimize the parameters for low-similarity alignments,
          similarly to the BLOSUM matrices.
+  --sample-number=N
+         Use N randomly-chosen chunks of the query sequences.  The
+         queries are chopped into fixed-length chunks (as if they were
+         first concatenated into one long sequence).  If there are ≤ N
+         chunks, all are picked.  Otherwise, if the final chunk is
+         shorter, it is never picked.  0 means use everything.
+  --sample-length=L
+         Use randomly-chosen chunks of length L.
+
+All options below this point are passed to lastal to do the
+alignments: they are described in more detail at `<lastal.html>`_.
 
 Initial parameter options
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -55,8 +66,10 @@ Initial parameter options
 Alignment options
 ~~~~~~~~~~~~~~~~~
 
-  -D LENGTH  Query letters per random alignment.
-  -E EG2     Maximum expected alignments per square giga.
+  -D LENGTH  Query letters per random alignment.  (See `here
+             <last-evalues.html>`_.)
+  -E EG2     Maximum expected alignments per square giga.  (See `here
+             <last-evalues.html>`_.)
   -s NUMBER  Which query strand to use: 0=reverse, 1=forward, 2=both.
   -S NUMBER  Score matrix applies to forward strand of: 0=reference,
              1=query.  This matters only if the scores lack
@@ -77,4 +90,7 @@ Bugs
   may be poor.
 
 * last-train can fail for various reasons, e.g. if the sequences are
-  too dissimilar.
+  too dissimilar.  If it fails to find any alignments, you could try
+  `reducing the alignment significance threshold
+  <last-tutorial.html#example-6-find-very-short-dna-alignments>`_ with
+  option -D.

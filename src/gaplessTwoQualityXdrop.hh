@@ -9,6 +9,8 @@
 #ifndef GAPLESS_TWO_QUALITY_XDROP_HH
 #define GAPLESS_TWO_QUALITY_XDROP_HH
 
+#include <stddef.h>
+
 namespace cbrc {
 
 typedef unsigned char uchar;
@@ -50,6 +52,15 @@ bool isOptimalGaplessTwoQualityXdrop(const uchar *seq1,
                                      const uchar *qual2,
                                      const TwoQualityScoreMatrix &m,
                                      int maxScoreDrop);
+
+int gaplessTwoQualityXdropOverlap(const uchar *seq1,
+				  const uchar *qual1,
+				  const uchar *seq2,
+				  const uchar *qual2,
+				  const TwoQualityScoreMatrix &m,
+				  int maxScoreDrop,
+				  size_t &reverseLength,
+				  size_t &forwardLength);
 
 int gaplessTwoQualityAlignmentScore(const uchar *seq1,
                                     const uchar *seq1end,

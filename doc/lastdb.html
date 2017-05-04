@@ -387,7 +387,19 @@ for ~80% AT-rich genomes.</p>
 <td>Soft-mask lowercase letters.  This means that, when we compare
 these sequences to some other sequences using lastal, lowercase
 letters will be excluded from initial matches.  This will apply
-to lowercase letters in both sets of sequences.</td></tr>
+to lowercase letters in <em>both</em> sets of sequences.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-u <var>NAME</var></span></kbd></td>
+<td><p class="first">Specify a seeding scheme.  The -m option will then be ignored.
+The built-in schemes are described in <a class="reference external" href="last-seeds.html">last-seeds.html</a>.</p>
+<p class="last">Any other NAME is assumed to be a file name.  For an example of
+the format, see the seed files in the data directory.  You can
+set other lastdb options on lines starting with <tt class="docutils literal">#lastdb</tt>, but
+command line options override them.  You can also set lastal
+options on lines starting with <tt class="docutils literal">#lastal</tt>, which are overridden
+by options from a <a class="reference external" href="last-matrices.html">scoring scheme</a> or the
+lastal command line.</p>
+</td></tr>
 </tbody>
 </table>
 </blockquote>
@@ -400,19 +412,24 @@ to lowercase letters in both sets of sequences.</td></tr>
 <col class="description" />
 <tbody valign="top">
 <tr><td class="option-group">
-<kbd><span class="option">-Q <var>NUMBER</var></span></kbd></td>
-<td>Specify the input format.  0 means fasta, 1 means fastq-sanger,
-2 means fastq-solexa, and 3 means fastq-illumina.  The fastq
-formats provide sequence quality data, which will be stored by
-lastdb and then used by lastal.  These formats are described in
-<a class="reference external" href="lastal.html">lastal.html</a>.</td></tr>
-<tr><td class="option-group">
 <kbd><span class="option">-w <var>STEP</var></span></kbd></td>
 <td>Allow initial matches to start only at every STEP-th position in
-each of the sequences given to lastdb.  This reduces the memory
-usage of lastdb and lastal, and it makes lastdb faster.  Its
-effect on the speed and sensitivity of lastal is not entirely
-clear.</td></tr>
+each of the sequences given to lastdb (positions 0, STEP,
+2×STEP, etc).  This reduces the memory usage of lastdb and
+lastal, and it makes lastdb faster.  Its effect on the speed and
+sensitivity of lastal is not entirely clear.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-W <var>SIZE</var></span></kbd></td>
+<td><p class="first">Allow initial matches to start only at positions that are
+&quot;minimum&quot; in any window of SIZE consecutive positions.
+&quot;Minimum&quot; means that the sequence starting here is
+alphabetically earliest.</p>
+<p>The &quot;alphabetical&quot; order depends on the <a class="reference external" href="last-seeds.html">seed pattern</a>.  The letter order is determined by the
+order of the letter groups, and letters in the same group are
+considered equivalent.</p>
+<p class="last">The fraction of positions that are &quot;minimum&quot; is roughly: 2 /
+(SIZE + 1).</p>
+</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-s <var>BYTES</var></span></kbd></td>
 <td><p class="first">Limit memory usage, by splitting the output files into smaller
@@ -425,13 +442,26 @@ can use suffixes K, M, and G to specify KibiBytes, MebiBytes,
 and GibiBytes (e.g. &quot;-s 5G&quot;).</p>
 <p>However, the output for one sequence is never split.  Since the
 output files are several-fold bigger than the input (unless you
-use -w), this means that mammalian chromosomes cannot be
-processed using much less than 2G (unless you use -w).</p>
+use -w or -W), this means that mammalian chromosomes cannot be
+processed using much less than 2G (unless you use -w or -W).</p>
 <p class="last">There is a hard upper limit of about 4 billion sequence letters
 per volume.  Together with the previous point, this means that
 lastdb will refuse to process any single sequence longer than
 about 4 billion.</p>
 </td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-Q <var>NUMBER</var></span></kbd></td>
+<td>Specify the input format.  0 means fasta, 1 means fastq-sanger,
+2 means fastq-solexa, and 3 means fastq-illumina.  The fastq
+formats provide sequence quality data, which will be stored by
+lastdb and then used by lastal.  These formats are described in
+<a class="reference external" href="lastal.html">lastal.html</a>.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-P <var>THREADS</var></span></kbd></td>
+<td>Divide the work between this number of threads running in
+parallel.  0 means use as many threads as your computer claims
+it can handle simultaneously.  Currently, multi-threading is
+used for tantan masking only.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-m <var>PATTERN</var></span></kbd></td>
 <td><p class="first">Specify a spaced seed pattern, for example &quot;-m 110101&quot;.  In this
@@ -451,18 +481,6 @@ Alternatively, you can use Iedera's notation, for example
 '_' for mismatch).</p>
 <p class="last">You can specify multiple patterns by separating them with commas
 and/or using &quot;-m&quot; multiple times.</p>
-</td></tr>
-<tr><td class="option-group">
-<kbd><span class="option">-u <var>NAME</var></span></kbd></td>
-<td><p class="first">Specify a seeding scheme.  The -m option will then be ignored.
-The built-in schemes are described in <a class="reference external" href="last-seeds.html">last-seeds.html</a>.</p>
-<p class="last">Any other NAME is assumed to be a file name.  For an example of
-the format, see the seed files in the data directory.  You can
-set other lastdb options on lines starting with <tt class="docutils literal">#lastdb</tt>, but
-command line options override them.  You can also set lastal
-options on lines starting with <tt class="docutils literal">#lastal</tt>, which are overridden
-by options from a <a class="reference external" href="last-matrices.html">scoring scheme</a> or the
-lastal command line.</p>
 </td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-a <var>SYMBOLS</var></span></kbd></td>
@@ -489,8 +507,9 @@ at most one byte per possible match start position.</td></tr>
 <td>Specify the type of &quot;child table&quot; to make: 0 means none, 1 means
 byte-size (uses a little more memory), 2 means short-size (uses
 somewhat more memory), 3 means full (uses a lot more memory).
-Choices &gt; 0 make lastdb slower, and may make lastal successively
-faster.</td></tr>
+Choices &gt; 0 make lastal a bit faster, but make lastdb slower,
+and have no effect on lastal's results.  Some tests suggest that
+-C2 is a good choice: faster than -C1 and no slower than -C3.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-x</span></kbd></td>
 <td>Just count sequences and letters.  This is much faster.  Letter
@@ -505,6 +524,44 @@ counting is never case-sensitive.</td></tr>
 </table>
 </blockquote>
 </div>
+</div>
+<div class="section" id="lastdb8">
+<h2>lastdb8</h2>
+<p>lastdb8 is identical to lastdb, except that it internally uses larger
+(8-byte) integers.  This means it can handle more than 4 billion
+sequence letters per volume, but it uses more memory.</p>
+</div>
+<div class="section" id="memory-and-disk-usage">
+<h2>Memory and disk usage</h2>
+<p>Suppose we give lastdb N letters of sequence data, of which M are
+non-masked &quot;real&quot; letters (e.g. excluding N for DNA and X for
+proteins).  The output files will include:</p>
+<ul>
+<li><p class="first">The sequences (N bytes).</p>
+</li>
+<li><p class="first">An &quot;index&quot; consisting of:
+positions (4M bytes), and &quot;buckets&quot; (&lt;= M bytes).</p>
+</li>
+<li><p class="first">The sequence names (<em>usually</em> negligible).</p>
+</li>
+</ul>
+<p>This is modified by several options.</p>
+<ul>
+<li><p class="first">-C1 adds M bytes to the index, -C2 adds 2M bytes, and -C3 adds 4M
+bytes.</p>
+</li>
+<li><p class="first">-w STEP: makes the index STEP times smaller.</p>
+</li>
+<li><p class="first">-W SIZE: makes the index about (SIZE+1)/2 times smaller.</p>
+</li>
+<li><p class="first">lastdb8: makes the index twice as big.</p>
+</li>
+<li><p class="first">-u, -m: Multiple patterns multiply the index size.  For example,
+<a class="reference external" href="last-seeds.html">MAM8</a> makes it 8 times bigger.</p>
+</li>
+<li><p class="first">-s: does not change the total size, but splits it into volumes.</p>
+</li>
+</ul>
 </div>
 <div class="section" id="limitations">
 <h2>Limitations</h2>

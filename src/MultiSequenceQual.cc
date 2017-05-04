@@ -61,8 +61,8 @@ std::istream&
 MultiSequence::appendFromPrb( std::istream& stream, indexT maxSeqLen,
 			      unsigned alphSize, const uchar decode[] ){
   const uchar padQualityScore = 64;  // should never be used, but a valid value
-  std::size_t qualPadSize = padSize * alphSize;
-  std::size_t qualSize = seq.v.size() * alphSize;
+  size_t qualPadSize = padSize * alphSize;
+  size_t qualSize = seq.v.size() * alphSize;
 
   // initForAppending:
   qualityScoresPerLetter = alphSize;
@@ -81,7 +81,7 @@ MultiSequence::appendFromPrb( std::istream& stream, indexT maxSeqLen,
     if( !stream ) return stream;
 
     // give the sequence a boring name:
-    static std::size_t lineCount = 0;
+    static size_t lineCount = 0;
     std::string name = stringify( ++lineCount );
     addName(name);
 
@@ -148,8 +148,8 @@ std::istream&
 MultiSequence::appendFromPssm( std::istream& stream, indexT maxSeqLen,
                                const uchar* lettersToNumbers,
                                bool isMaskLowercase ){
-  std::size_t pssmPadSize = padSize * scoreMatrixRowSize;
-  std::size_t pssmSize = seq.v.size() * scoreMatrixRowSize;
+  size_t pssmPadSize = padSize * scoreMatrixRowSize;
+  size_t pssmSize = seq.v.size() * scoreMatrixRowSize;
 
   // initForAppending:
   if( pssm.empty() )

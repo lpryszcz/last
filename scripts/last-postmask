@@ -12,7 +12,7 @@
 # Limitations: doesn't (yet) handle sequence quality data,
 # frameshifts, or generalized affine gaps.
 
-import fileinput, itertools, optparse, os, signal, sys
+import itertools, optparse, os, signal, sys
 
 def getScoreMatrix(rowHeads, colHeads, matrix, deleteCost, insertCost):
     defaultScore = min(map(min, matrix))
@@ -56,12 +56,12 @@ def printIfGood(maf, seqs, scoreMatrix, delOpenCost, insOpenCost, minScore):
             print line,
         print
 
-def lastPostmask(args):
+def doOneFile(file):
     scoreMatrix = []
     maf = []
     seqs = []
 
-    for line in fileinput.input(args):
+    for line in file:
         if line[0] == "#":
             print line,
             w = line.split()
@@ -89,6 +89,17 @@ def lastPostmask(args):
             maf.append(line)
             if line[0] == "s": seqs.append(line.split()[6])
     if seqs: printIfGood(maf, seqs, scoreMatrix, aDel, aIns, minScore)
+
+def lastPostmask(args):
+    if args:
+        for i in args:
+            if i == "-":
+                doOneFile(sys.stdin)
+            else:
+                with open(i) as file:
+                    doOneFile(file)
+    else:
+        doOneFile(sys.stdin)
 
 if __name__ == "__main__":
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # avoid silly error message

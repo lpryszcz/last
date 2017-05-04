@@ -27,24 +27,30 @@ inline double solexaErrorProb(int qualityScore) {
   return 1 / (1 + std::pow(10.0, 0.1 * qualityScore));
 }
 
-inline double qualityUncertainty(int qualityCode, int qualityOffset,
-                                 bool isPhred, double letterProb) {
+inline double errorProbFromQual(int qualityCode, int qualityOffset,
+				bool isPhred) {
   int q = qualityCode - qualityOffset;
   double errorProb = isPhred ? phredErrorProb(q) : solexaErrorProb(q);
   // The next line of code is a kludge to avoid numerical instability.
   // An error probability of 1 is bizarre and probably shouldn't occur anyway.
   if (errorProb >= 1) errorProb = 0.999999;
+  return errorProb;
+}
+
+inline double qualityUncertainty(double errorProb, double letterProb) {
   double otherProb = 1 - letterProb;
   assert(letterProb >= 0);
   assert(otherProb > 0);
   return errorProb / otherProb;
 }
 
-inline int qualityPairScore(double expScore, double uncertainty1,
-                            double uncertainty2, double lambda) {
-  double x = (1 - uncertainty1) * (1 - uncertainty2) * (expScore - 1) + 1;
-  assert(lambda > 0);
-  assert(x > 0);
+inline double qualityCertainty(double errorProb, double letterProb) {
+  return 1 - qualityUncertainty(errorProb, letterProb);
+}
+
+inline int qualityPairScore(double expScore, double certainty1,
+			    double certainty2, double lambda) {
+  double x = certainty1 * certainty2 * (expScore - 1) + 1;
   return nearestInt(std::log(x) / lambda);
 }
 

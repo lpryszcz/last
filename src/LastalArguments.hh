@@ -14,8 +14,6 @@
 namespace cbrc{
 
 struct LastalArguments{
-  typedef unsigned indexT;
-
   // set the parameters to their default values:
   LastalArguments();
 
@@ -38,6 +36,7 @@ struct LastalArguments{
 				double numLettersInReference,
 				bool isKeepRefLowercase, int refTantanSetting,
                                 bool isCaseSensitiveSeeds, bool isVolumes,
+				size_t refMinimizerWindow,
 				unsigned realNumOfThreads );
   void setDefaultsFromMatrix( double lambda, int minScore );
 
@@ -49,7 +48,10 @@ struct LastalArguments{
   void writeCommented( std::ostream& stream ) const;
 
   // are we doing translated alignment (DNA versus protein)?
-  bool isTranslated() const{ return frameshiftCost > 0; }
+  bool isTranslated() const{ return frameshiftCost >= 0; }
+
+  // are we doing translated alignment with frameshifts?
+  bool isFrameshift() const{ return frameshiftCost > 0; }
 
   // how many strands are we scanning (1 or 2)?
   int numOfStrands() const{ return (strand == 2) ? 2 : 1; }
@@ -59,6 +61,7 @@ struct LastalArguments{
   int outputType;
   int strand;
   bool isQueryStrandMatrix;
+  bool isGreedy;
   int globality;  // type of alignment: local, semi-global, etc.
   bool isKeepLowercase;
   int tantanSetting;
@@ -80,22 +83,25 @@ struct LastalArguments{
   int maxDropGapless;
   int maxDropFinal;
   sequenceFormat::Enum inputFormat;
-  indexT minHitDepth;
-  indexT maxHitDepth;
-  indexT oneHitMultiplicity;
-  indexT maxGaplessAlignmentsPerQueryPosition;
+  size_t minHitDepth;
+  size_t maxHitDepth;
+  size_t oneHitMultiplicity;
+  size_t maxGaplessAlignmentsPerQueryPosition;
+  size_t maxAlignmentsPerQueryStrand;
   size_t cullingLimitForGaplessAlignments;
   size_t cullingLimitForFinalAlignments;
-  indexT queryStep;
-  indexT batchSize;  // approx size of query sequences to scan in 1 batch
+  size_t queryStep;
+  size_t minimizerWindow;
+  size_t batchSize;  // approx size of query sequences to scan in 1 batch
   unsigned numOfThreads;
-  indexT maxRepeatDistance;  // suppress repeats <= this distance apart
+  size_t maxRepeatDistance;  // suppress repeats <= this distance apart
   double temperature;  // probability = exp( score / temperature ) / Z
   double gamma;        // parameter for gamma-centroid alignment
   std::string geneticCodeFile;
   int verbosity;
 
   // positional arguments:
+  const char* programName;
   std::string lastdbName;
   int inputStart;  // index in argv of first input filename
 };

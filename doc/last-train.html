@@ -330,8 +330,8 @@ lastdb mydb reference.fasta
 last-train mydb queries.fasta
 </pre>
 <p>last-train prints a summary of each alignment step, followed by the
-final score parameters in a format that can be read by lastal's -p
-option.</p>
+final score parameters in a format that can be read by <a class="reference external" href="lastal.html#score-options">lastal's -p
+option</a>.</p>
 <div class="section" id="options">
 <h2>Options</h2>
 <blockquote>
@@ -369,9 +369,21 @@ e.g. score(A→G) = score(G→A).</td></tr>
 <td>Ignore alignments with &gt; PID% identity.  This aims to
 optimize the parameters for low-similarity alignments,
 similarly to the BLOSUM matrices.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--sample-number=<var>N</var></span></kbd></td>
+<td>Use N randomly-chosen chunks of the query sequences.  The
+queries are chopped into fixed-length chunks (as if they were
+first concatenated into one long sequence).  If there are ≤ N
+chunks, all are picked.  Otherwise, if the final chunk is
+shorter, it is never picked.  0 means use everything.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--sample-length=<var>L</var></span></kbd></td>
+<td>Use randomly-chosen chunks of length L.</td></tr>
 </tbody>
 </table>
 </blockquote>
+<p>All options below this point are passed to lastal to do the
+alignments: they are described in more detail at <a class="reference external" href="lastal.html">lastal.html</a>.</p>
 </div>
 <div class="section" id="initial-parameter-options">
 <h3>Initial parameter options</h3>
@@ -414,10 +426,10 @@ similarly to the BLOSUM matrices.</td></tr>
 <tbody valign="top">
 <tr><td class="option-group">
 <kbd><span class="option">-D <var>LENGTH</var></span></kbd></td>
-<td>Query letters per random alignment.</td></tr>
+<td>Query letters per random alignment.  (See <a class="reference external" href="last-evalues.html">here</a>.)</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-E <var>EG2</var></span></kbd></td>
-<td>Maximum expected alignments per square giga.</td></tr>
+<td>Maximum expected alignments per square giga.  (See <a class="reference external" href="last-evalues.html">here</a>.)</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-s <var>NUMBER</var></span></kbd></td>
 <td>Which query strand to use: 0=reverse, 1=forward, 2=both.</td></tr>
@@ -454,7 +466,9 @@ distribution.  If they do not (which is often the case), the results
 may be poor.</p>
 </li>
 <li><p class="first">last-train can fail for various reasons, e.g. if the sequences are
-too dissimilar.</p>
+too dissimilar.  If it fails to find any alignments, you could try
+<a class="reference external" href="last-tutorial.html#example-6-find-very-short-dna-alignments">reducing the alignment significance threshold</a> with
+option -D.</p>
 </li>
 </ul>
 </div>

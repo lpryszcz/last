@@ -19,7 +19,7 @@ namespace cbrc{
 
 class MultiSequence{
  public:
-  typedef unsigned indexT;
+  typedef LAST_INT_TYPE indexT;
   typedef unsigned char uchar;
 
   // initialize with leftmost delimiter pad, ready for appending sequences
@@ -30,7 +30,7 @@ class MultiSequence{
 
   // read seqCount finished sequences, and their names, from binary files
   void fromFiles( const std::string& baseName, indexT seqCount,
-                  std::size_t qualitiesPerLetter );
+                  size_t qualitiesPerLetter );
 
   // write all the finished sequences and their names to binary files
   void toFiles( const std::string& baseName ) const;
@@ -68,7 +68,7 @@ class MultiSequence{
   indexT finishedSize() const{ return ends.back(); }
 
   // total length of finished and unfinished sequences plus delimiters
-  std::size_t unfinishedSize() const{ return seq.size(); }
+  size_t unfinishedSize() const{ return seq.size(); }
 
   // which sequence is the coordinate in?
   indexT whichSequence( indexT coordinate ) const;
@@ -104,7 +104,7 @@ class MultiSequence{
 
   // How many quality scores are there per letter?  There might be
   // none at all, one per letter, or several (e.g. 4) per letter.
-  std::size_t qualsPerLetter() const { return qualityScoresPerLetter; }
+  size_t qualsPerLetter() const { return qualityScoresPerLetter; }
 
  private:
   indexT padSize;  // number of delimiter chars between sequences
@@ -122,7 +122,7 @@ class MultiSequence{
   // Qphred = -10*log10(p)
   // Qsolexa = -10*log10(p/(1-p))
   VectorOrMmap<uchar> qualityScores;
-  std::size_t qualityScoresPerLetter;
+  size_t qualityScoresPerLetter;
 
   // read a FASTA header: read the whole line but store just the first word
   std::istream& readFastaName( std::istream& stream );
@@ -136,6 +136,21 @@ class MultiSequence{
   // can we finish the last sequence and stay within the memory limit?
   bool isFinishable( indexT maxSeqLen ) const;
 };
+
+// Divide the sequences into a given number of roughly-equally-sized
+// chunks, and return the first sequence in the Nth chunk.
+inline size_t firstSequenceInChunk(const MultiSequence &m,
+				   size_t numOfChunks, size_t chunkNum) {
+  size_t numOfSeqs = m.finishedSequences();
+  size_t beg = m.seqBeg(0);
+  size_t end = m.padEnd(numOfSeqs - 1) - 1;
+  unsigned long long len = end - beg;  // try to avoid overflow
+  size_t pos = beg + len * chunkNum / numOfChunks;
+  size_t seqNum = m.whichSequence(pos);
+  size_t begDistance = pos - m.seqBeg(seqNum);
+  size_t endDistance = m.padEnd(seqNum) - pos;
+  return (begDistance < endDistance) ? seqNum : seqNum + 1;
+}
 
 }  // end namespace cbrc
 #endif  // MULTISEQUENCE_HH

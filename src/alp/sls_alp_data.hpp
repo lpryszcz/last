@@ -53,13 +53,9 @@ Contents: Contains input data
 
 
 #ifndef _MSC_VER //UNIX program
-#include <sys/time.h>
 #else
-#include <sys/timeb.h>
-
 #define _CRTDBG_MAP_ALLOC
 #include <crtdbg.h>
-
 #endif
 
 

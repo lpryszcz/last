@@ -6,6 +6,7 @@
 #define GAPLESS_XDROP_HH
 
 #include "ScoreMatrixRow.hh"
+#include <stddef.h>
 
 namespace cbrc {
 
@@ -53,6 +54,20 @@ bool isOptimalGaplessXdrop(const uchar *seq1,
                            const uchar *seq2,
                            const ScoreMatrixRow *scorer,
                            int maxScoreDrop);
+
+// Returns the score, and sets the reverse and forward extension
+// lengths, for a gapless "overlap" alignment starting at (seq1,
+// seq2).  "Overlap" means that the alignment must extend, in each
+// direction, until it hits a score <= -INF (presumably from a
+// sentinel indicating a sequence end).  If the alignment would have
+// any region with score < -maxScoreDrop, -INF is returned and the
+// extension lengths are not set.
+int gaplessXdropOverlap(const uchar *seq1,
+			const uchar *seq2,
+			const ScoreMatrixRow *scorer,
+			int maxScoreDrop,
+			size_t &reverseLength,
+			size_t &forwardLength);
 
 // Calculate the score of the gapless alignment starting at (seq1,
 // seq2) and ending at seq1end.

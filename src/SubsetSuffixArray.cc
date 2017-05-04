@@ -1,6 +1,7 @@
 // Copyright 2008, 2009, 2010, 2013, 2014 Martin C. Frith
 
 #include "SubsetSuffixArray.hh"
+#include "SubsetMinimizerFinder.hh"
 #include "io.hh"
 #include <cassert>
 #include <cstdio>  // remove
@@ -8,21 +9,25 @@
 
 using namespace cbrc;
 
-void SubsetSuffixArray::addPositions( const uchar* text,
-				      indexT beg, indexT end, indexT step ){
-  assert( step > 0 );
-  const uchar* subsetMap = seed.firstMap();
+void SubsetSuffixArray::addPositions(const uchar* text, indexT beg, indexT end,
+				     size_t step, size_t minimizerWindow) {
+  if (beg >= end) return;
+  assert(step > 0);
+  const uchar *subsetMap = seed.firstMap();
+  SubsetMinimizerFinder f;
+  f.init(seed, text, beg, end);
 
-  for( indexT i = beg; i < end; i += step ){
-    if( subsetMap[ text[i] ] < CyclicSubsetSeed::DELIMITER ){
-      suffixArray.v.push_back(i);
+  while (true) {
+    if (minimizerWindow > 1) {
+      if (f.isMinimizer(seed, text, beg, end, minimizerWindow))
+	suffixArray.v.push_back(beg);
+    } else {
+      if (subsetMap[text[beg]] < CyclicSubsetSeed::DELIMITER)
+	suffixArray.v.push_back(beg);
     }
-    if( i + step < i ) break;  // avoid overflow
+    if (end - beg <= step) break;  // avoid overflow
+    beg += step;
   }
-}
-
-void SubsetSuffixArray::clearPositions(){
-  suffixArray.v.clear();
 }
 
 void SubsetSuffixArray::fromFiles( const std::string& baseName,
@@ -110,7 +115,7 @@ void SubsetSuffixArray::toFiles( const std::string& baseName,
   memoryToBinaryFile( chibiTable.begin(), chibiTable.end(), fileName );
 }
 
-void SubsetSuffixArray::makeBuckets( const uchar* text, indexT bucketDepth ){
+void SubsetSuffixArray::makeBuckets( const uchar* text, unsigned bucketDepth ){
   if( bucketDepth+1 == 0 ) bucketDepth = defaultBucketDepth();
 
   makeBucketSteps( bucketDepth );
@@ -121,7 +126,7 @@ void SubsetSuffixArray::makeBuckets( const uchar* text, indexT bucketDepth ){
     const uchar* textPtr = text + suffixArray[i];
     const uchar* subsetMap = seed.firstMap();
     indexT bucketIndex = 0;
-    indexT depth = 0;
+    unsigned depth = 0;
 
     while( depth < bucketDepth ){
       uchar subset = subsetMap[ *textPtr ];
@@ -131,8 +136,7 @@ void SubsetSuffixArray::makeBuckets( const uchar* text, indexT bucketDepth ){
       }
       ++textPtr;
       ++depth;
-      indexT step = bucketSteps[depth];
-      bucketIndex += subset * step;
+      bucketIndex += subset * bucketSteps[depth];
       subsetMap = seed.nextMap( subsetMap );
     }
 
@@ -154,11 +158,11 @@ void SubsetSuffixArray::makeBucketSteps( indexT bucketDepth ){
   }
 }
 
-SubsetSuffixArray::indexT SubsetSuffixArray::defaultBucketDepth(){
+unsigned SubsetSuffixArray::defaultBucketDepth(){
   indexT maxBucketEntries = suffixArray.size() / 4;
-  indexT bucketDepth = 0;
   indexT kmerEntries = 1;
   indexT bucketEntries = 1;
+  unsigned bucketDepth = 0;
 
   while(true){
     indexT nextSubsetCount = seed.subsetCount(bucketDepth);

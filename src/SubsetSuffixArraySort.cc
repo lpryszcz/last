@@ -256,7 +256,7 @@ void SubsetSuffixArray::radixSortN( const uchar* text, const uchar* subsetMap,
   for( indexT* i = beg; i < end; /* noop */ ){
     uchar oracle[256];
     uchar* oracleEnd =
-      oracle + std::min( sizeof(oracle), std::size_t(end - i) );
+      oracle + std::min( sizeof(oracle), size_t(end - i) );
     for( uchar* j = oracle; j < oracleEnd; ++j )
       *j = subsetMap[ text[ *i++ ] ];
     for( uchar* j = oracle; j < oracleEnd; ++j )
@@ -307,7 +307,7 @@ void SubsetSuffixArray::radixSortN( const uchar* text, const uchar* subsetMap,
 }
 
 void SubsetSuffixArray::sortIndex( const uchar* text,
-				   indexT maxUnsortedInterval,
+				   size_t maxUnsortedInterval,
 				   int childTableType ){
   const indexT minLength = 1;
 
@@ -324,18 +324,19 @@ void SubsetSuffixArray::sortIndex( const uchar* text,
     indexT depth;
     POP( beg, end, depth );
 
-    if( end - beg <= maxUnsortedInterval && depth >= minLength ) continue;
+    size_t interval = end - beg;
+    if( interval <= maxUnsortedInterval && depth >= minLength ) continue;
 
     const uchar* textBase = text + depth;
     const uchar* subsetMap = seed.subsetMap(depth);
 
     if( childTableType == 0 ){
-      if( end - beg < 10 ){  // ???
+      if( interval < 10 ){  // ???
 	insertionSort( textBase, seed, beg, end, subsetMap );
 	continue;
       }
     }else{
-      if( end - beg == 2 ){
+      if( interval == 2 ){
 	sort2( textBase, beg, subsetMap );
 	continue;
       }

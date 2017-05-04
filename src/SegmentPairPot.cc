@@ -113,7 +113,7 @@ void SegmentPairPot::markAllOverlaps( const std::vector<SegmentPair>& sps ){
 }
 
 void SegmentPairPot::markTandemRepeats( const SegmentPair& sp,
-					indexT maxDistance ){
+					size_t maxDistance ){
   assert( !items.empty() );
 
   // Careful: if we are self-comparing lots of short sequences, there

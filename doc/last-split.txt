@@ -20,19 +20,19 @@ Assume the DNA reads are in a file called "q.fastq" (in fastq-sanger
 format), and the genome is in "genome.fasta" (in fasta format).  We
 can do the alignment like this::
 
-  lastdb -uNEAR db genome.fasta
-  lastal -Q1 -e120 db q.fastq | last-split > out.maf
+  lastdb -uNEAR -R01 db genome.fasta
+  lastal -Q1 -D100 db q.fastq | last-split > out.maf
 
 Spliced alignment of RNA reads to a genome
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Now we assume that "q.fastq" has reads from RNA forward strands.  This
-time, we provide the genome information to last-split, which causes it
-to do spliced instead of split alignment, and also tells it where the
-splice signals are (GT, AG, etc)::
+Now we assume that "q.fastq" has reads from RNA forward (sense)
+strands.  This time, we provide the genome information to last-split,
+which causes it to do spliced instead of split alignment, and also
+tells it where the splice signals are (GT, AG, etc)::
 
-  lastdb -uNEAR db genome.fasta
-  lastal -Q1 -e120 db q.fastq | last-split -g db > out.maf
+  lastdb -uNEAR -R01 db genome.fasta
+  lastal -Q1 -D10 db q.fastq | last-split -g db > out.maf
 
 This will favour splices starting at GT (and to a lesser extent GC and
 AT), and ending at AG (and to a lesser extent AC).  However, it allows
@@ -41,12 +41,20 @@ introns of typical length, specified by a log-normal distribution
 (i.e. cis-splices).  However, it allows arbitrary trans-splices
 between any two places in the genome.
 
+-D10 sets a very loose significance threshold, so that we can find
+very short parts of a spliced alignment (e.g. short exons).  Note that
+last-split discards the lowest-significance alignments, but it uses
+them to estimate the ambiguity of higher-significance alignments.
+
+If your reads are from unknown/mixed RNA strands, add -d2 to the
+last-split options.
+
 Alignment of two whole genomes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 We can align the cat and rat genomes like this::
 
-  lastdb -cR11 -uMAM8 catdb cat.fasta
+  lastdb -uMAM8 -cR11 catdb cat.fasta
   lastal -m100 -E0.05 catdb rat.fasta | last-split -m1 > out.maf
 
 This will align each rat base-pair to at most one cat base-pair, but
@@ -70,7 +78,7 @@ Going faster by parallelization
 
 For example, split alignment of DNA reads to a genome::
 
-  parallel-fastq "lastal -Q1 -e120 db | last-split" < q.fastq > out.maf
+  parallel-fastq "lastal -Q1 -D100 db | last-split" < q.fastq > out.maf
 
 This requires GNU parallel to be installed
 (http://www.gnu.org/software/parallel/).
@@ -151,8 +159,8 @@ Faster spliced alignment
 Spliced alignment can be slow.  It can be sped up, at a small cost in
 accuracy, by not favouring cis-splices::
 
-  lastdb -uNEAR db genome.fasta
-  lastal -Q1 -e120 db q.fastq | last-split -c0 -t0.004 -g db > out.maf
+  lastdb -uNEAR -R01 db genome.fasta
+  lastal -Q1 -D10 db q.fastq | last-split -c0 -t0.004 -g db > out.maf
 
 The -c0 turns off cis-splicing, and the -t0.004 specifies a higher
 probability of trans-splicing.
@@ -164,8 +172,8 @@ If we do not wish to allow arbitrarily large unaligned parts in the
 middle of the query, we can do "spliced" alignment without considering
 splice signals or favouring cis-splices::
 
-  lastdb -uNEAR db genome.fasta
-  lastal -Q1 -e120 db q.fastq | last-split -c0 > out.maf
+  lastdb -uNEAR -R01 db genome.fasta
+  lastal -Q1 -D100 db q.fastq | last-split -c0 > out.maf
 
 Options
 -------
@@ -180,9 +188,14 @@ Options
 
   -d, --direction=D
          Do spliced alignment, and set the strandedness of the
-         queries: 0=reverse, 1=forward, 2=unknown/mixed.  This
+         queries: 0=antisense, 1=sense, 2=unknown/mixed.  This
          determines whether forward and/or reverse-complement splice
          signals are used.
+
+         If you use -d2, the output will have an extra "sense" field,
+         indicating the log-odds that the query is sense-stranded::
+
+	   log2[ prob(sense) / prob(antisense) ]
 
   -c, --cis=PROB
          Do spliced alignment, and set the average probability per
@@ -213,11 +226,11 @@ Options
          threshold).  Alignments with score just above INT will get
          high mismap probabilities.
 
-         For SPLICED alignment, the default value is e + t * ln(1000),
+         For SPLICED alignment, the default value is e + t * ln(100),
          where t is a scale factor that is written in the lastal
          header.  This roughly means that, for every alignment it
          writes, it has considered alternative alignments with
-         one-thousandth the probability.  Alignments with score just
+         one-hundredth the probability.  Alignments with score just
          above INT will not necessarily get high mismap probabilities.
 
   -n, --no-split
@@ -225,6 +238,14 @@ Options
          *original* alignments, annotated with "p" lines and mismap
          probabilities.  Note that the mismap and score limits still
          apply.
+
+  -b, --bytes=B
+         Skip any query sequence that would require more than B bytes
+         of memory to process.  (This only limits the size of some
+         core data-structures: the total memory use will be greater.)
+         A warning is written for each skipped sequence.  You can use
+         suffixes such as K (KibiBytes), M (MebiBytes), G (GibiBytes),
+         T (TebiBytes), e.g. -b20G.
 
   -v, --verbose
          Show progress information on the screen.
@@ -259,6 +280,13 @@ The following points matter only if you are doing something unusual
 
 * It assumes this score matrix applies to all alignments, when the
   alignments are oriented to use the forward strand of the query.
+
+last-split8
+-----------
+
+last-split8 is almost identical to last-split.  The only difference is
+the -g option: last-split can only read the output of lastdb, whereas
+last-split8 can only read the output of `lastdb8 <lastdb.html>`_.
 
 Limitations
 -----------

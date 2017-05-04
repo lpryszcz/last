@@ -9,17 +9,17 @@ using namespace cbrc;
 // could & probably should return the match depth
 void SubsetSuffixArray::match( const indexT*& begPtr, const indexT*& endPtr,
                                const uchar* queryPtr, const uchar* text,
-                               indexT maxHits,
-                               indexT minDepth, indexT maxDepth ) const{
+                               size_t maxHits,
+                               size_t minDepth, size_t maxDepth ) const{
   // the next line is unnecessary, but makes it faster in some cases:
   if( maxHits == 0 && minDepth < maxDepth ) minDepth = maxDepth;
 
-  indexT depth = 0;
+  size_t depth = 0;
   const uchar* subsetMap = seed.firstMap();
 
   // match using buckets:
-  indexT bucketDepth = maxBucketPrefix();
-  indexT startDepth = std::min( bucketDepth, maxDepth );
+  size_t bucketDepth = maxBucketPrefix();
+  size_t startDepth = std::min( bucketDepth, maxDepth );
   const indexT* bucketPtr = &buckets[0];
 
   while( depth < startDepth ){
@@ -39,7 +39,8 @@ void SubsetSuffixArray::match( const indexT*& begPtr, const indexT*& endPtr,
     uchar subset = oldMap[ queryPtr[depth-1] ];
     bucketPtr -= subset * bucketSteps[depth];
     indexT oldBeg = *bucketPtr;
-    indexT oldEnd = *(bucketPtr + bucketSteps[depth-1]);
+    indexT oldEnd =
+      (depth > 1) ? *(bucketPtr + bucketSteps[depth-1]) : suffixArray.size();
     if( oldEnd - oldBeg > maxHits ) break;
     subsetMap = oldMap;
     beg = oldBeg;
@@ -50,7 +51,7 @@ void SubsetSuffixArray::match( const indexT*& begPtr, const indexT*& endPtr,
   // match using binary search:
 
   if( depth < minDepth ){
-    indexT d = depth;
+    size_t d = depth;
     const uchar* s = subsetMap;
     while( depth < minDepth ){
       uchar subset = subsetMap[ queryPtr[depth] ];
@@ -84,12 +85,12 @@ void SubsetSuffixArray::match( const indexT*& begPtr, const indexT*& endPtr,
 void SubsetSuffixArray::countMatches( std::vector<unsigned long long>& counts,
 				      const uchar* queryPtr,
 				      const uchar* text,
-				      indexT maxDepth ) const{
-  indexT depth = 0;
+				      size_t maxDepth ) const{
+  size_t depth = 0;
   const uchar* subsetMap = seed.firstMap();
 
   // match using buckets:
-  indexT bucketDepth = maxBucketPrefix();
+  size_t bucketDepth = maxBucketPrefix();
   const indexT* bucketPtr = &buckets[0];
   indexT beg = 0;
   indexT end = suffixArray.size();

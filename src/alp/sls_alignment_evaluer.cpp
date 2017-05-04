@@ -1014,11 +1014,6 @@ double seqlen2_) const//length of sequence #2
 	E,
 
 	area_res,
-	pvalues_obj.a_normal,
-	pvalues_obj.b_normal,
-	pvalues_obj.h_normal,
-	pvalues_obj.N_normal,
-	pvalues_obj.p_normal,
 	area_is_1_flag,
 	compute_only_area);
 
@@ -1093,11 +1088,6 @@ double &evalue_) const//resulted E-value
 	evalue_,
 
 	area,
-	pvalues_obj.a_normal,
-	pvalues_obj.b_normal,
-	pvalues_obj.h_normal,
-	pvalues_obj.N_normal,
-	pvalues_obj.p_normal,
 	area_is_1_flag);
 
 	

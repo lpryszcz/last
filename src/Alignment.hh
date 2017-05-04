@@ -15,8 +15,8 @@ namespace cbrc{
 
 typedef unsigned char uchar;
 
-class GappedXdropAligner;
 class GeneralizedAffineGapCosts;
+class GreedyXdropAligner;
 class LastEvaluer;
 class MultiSequence;
 class Alphabet;
@@ -77,7 +77,8 @@ struct Alignment{
   // Alignment might not be "optimal" (see below).
   // If outputType > 3: calculates match probabilities.
   // If outputType > 4: does gamma-centroid alignment.
-  void makeXdrop( GappedXdropAligner& aligner, Centroid& centroid,
+  void makeXdrop( Centroid& centroid,
+		  GreedyXdropAligner& greedyAligner, bool isGreedy,
 		  const uchar* seq1, const uchar* seq2, int globality,
 		  const ScoreMatrixRow* scoreMatrix, int smMax,
 		  const GeneralizedAffineGapCosts& gap, int maxDrop,
@@ -94,11 +95,20 @@ struct Alignment{
   // If "globality" is non-zero, skip the prefix and suffix checks.
   bool isOptimal( const uchar* seq1, const uchar* seq2, int globality,
                   const ScoreMatrixRow* scoreMatrix, int maxDrop,
-                  const GeneralizedAffineGapCosts& gap,
+                  const GeneralizedAffineGapCosts& gapCosts,
 		  int frameshiftCost, size_t frameSize,
 		  const ScoreMatrixRow* pssm2,
                   const TwoQualityScoreMatrix& sm2qual,
-                  const uchar* qual1, const uchar* qual2 );
+                  const uchar* qual1, const uchar* qual2 ) const;
+
+  // Does the Alignment have any segment with score >= minScore?
+  bool hasGoodSegment(const uchar *seq1, const uchar *seq2,
+		      int minScore, const ScoreMatrixRow *scoreMatrix,
+		      const GeneralizedAffineGapCosts &gapCosts,
+		      int frameshiftCost, size_t frameSize,
+		      const ScoreMatrixRow *pssm2,
+		      const TwoQualityScoreMatrix &sm2qual,
+		      const uchar *qual1, const uchar *qual2) const;
 
   AlignmentText write(const MultiSequence& seq1, const MultiSequence& seq2,
 		      size_t seqNum2, char strand, const uchar* seqData2,
@@ -118,7 +128,8 @@ struct Alignment{
 
   void extend( std::vector< SegmentPair >& chunks,
 	       std::vector< uchar >& ambiguityCodes,
-	       GappedXdropAligner& aligner, Centroid& centroid,
+	       Centroid& centroid,
+	       GreedyXdropAligner& greedyAligner, bool isGreedy,
 	       const uchar* seq1, const uchar* seq2,
 	       size_t start1, size_t start2,
 	       bool isForward, int globality,

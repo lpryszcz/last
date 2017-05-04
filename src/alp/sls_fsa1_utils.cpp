@@ -27,7 +27,7 @@
 
 File name: sls_fsa1_utils.cpp
 
-Author: Sergey Sheetlin
+Author: Sergey Sheetlin, Martin Frith
 
 Contents: Frameshift alignment algorithms 
 
@@ -1881,21 +1881,7 @@ bool *rand_flag_)
 
 	if(random_factor_<0)
 	{
-		random_factor_=(long int)time(NULL);
-		#ifndef _MSC_VER //UNIX program
-			struct timeval tv;
-			struct timezone tz;
-			gettimeofday(&tv, &tz);
-			random_factor_+=tv.tv_usec*10000000;
-		#else
-			struct _timeb timebuffer;
-			char *timeline;
-			_ftime( &timebuffer );
-			timeline = ctime( & ( timebuffer.time ) );
-			random_factor_+=timebuffer.millitm*10000000;
-		#endif
-
-		random_factor_=abs(random_factor_);
+		random_factor_=sls_basic::random_seed_from_time();
 
 		if(rand_flag_)
 		{

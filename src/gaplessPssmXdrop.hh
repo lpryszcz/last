@@ -10,6 +10,7 @@
 #define GAPLESS_PSSM_XDROP_HH
 
 #include "ScoreMatrixRow.hh"
+#include <stddef.h>
 
 namespace cbrc {
 
@@ -35,6 +36,12 @@ bool isOptimalGaplessPssmXdrop(const uchar *seq,
                                const uchar *seqEnd,
                                const ScoreMatrixRow *pssm,
                                int maxScoreDrop);
+
+int gaplessPssmXdropOverlap(const uchar *seq,
+			    const ScoreMatrixRow *pssm,
+			    int maxScoreDrop,
+			    size_t &reverseLength,
+			    size_t &forwardLength);
 
 int gaplessPssmAlignmentScore(const uchar *seq,
                               const uchar *seqEnd,

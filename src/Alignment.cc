@@ -3,9 +3,9 @@
 #include "Alignment.hh"
 #include "Alphabet.hh"
 #include "Centroid.hh"
-#include "GappedXdropAligner.hh"
 #include "GeneticCode.hh"
 #include "GeneralizedAffineGapCosts.hh"
+#include "GreedyXdropAligner.hh"
 #include "TwoQualityScoreMatrix.hh"
 #include <cassert>
 
@@ -69,7 +69,8 @@ static bool isNext( const SegmentPair& x, const SegmentPair& y ){
   return x.end1() == y.beg1() && x.end2() == y.beg2();
 }
 
-void Alignment::makeXdrop( GappedXdropAligner& aligner, Centroid& centroid,
+void Alignment::makeXdrop( Centroid& centroid,
+			   GreedyXdropAligner& greedyAligner, bool isGreedy,
 			   const uchar* seq1, const uchar* seq2, int globality,
 			   const ScoreMatrixRow* scoreMatrix, int smMax,
 			   const GeneralizedAffineGapCosts& gap, int maxDrop,
@@ -96,8 +97,8 @@ void Alignment::makeXdrop( GappedXdropAligner& aligner, Centroid& centroid,
 
   // extend a gapped alignment in the left/reverse direction from the seed:
   std::vector<uchar>& columnAmbiguityCodes = extras.columnAmbiguityCodes;
-  extend( blocks, columnAmbiguityCodes, aligner, centroid, seq1, seq2,
-	  seed.beg1(), seed.beg2(), false, globality,
+  extend( blocks, columnAmbiguityCodes, centroid, greedyAligner, isGreedy,
+	  seq1, seq2, seed.beg1(), seed.beg2(), false, globality,
 	  scoreMatrix, smMax, maxDrop, gap, frameshiftCost,
 	  frameSize, pssm2, sm2qual, qual1, qual2, alph,
 	  extras, gamma, outputType );
@@ -116,8 +117,8 @@ void Alignment::makeXdrop( GappedXdropAligner& aligner, Centroid& centroid,
   // extend a gapped alignment in the right/forward direction from the seed:
   std::vector<SegmentPair> forwardBlocks;
   std::vector<uchar> forwardAmbiguities;
-  extend( forwardBlocks, forwardAmbiguities, aligner, centroid, seq1, seq2,
-	  seed.end1(), seed.end2(), true, globality,
+  extend( forwardBlocks, forwardAmbiguities, centroid, greedyAligner, isGreedy,
+	  seq1, seq2, seed.end1(), seed.end2(), true, globality,
 	  scoreMatrix, smMax, maxDrop, gap, frameshiftCost,
 	  frameSize, pssm2, sm2qual, qual1, qual2, alph,
 	  extras, gamma, outputType );
@@ -168,31 +169,34 @@ void Alignment::makeXdrop( GappedXdropAligner& aligner, Centroid& centroid,
                                forwardAmbiguities.rend() );
 }
 
+// cost of the gap between x and y
+static int gapCost(const SegmentPair &x, const SegmentPair &y,
+		   const GeneralizedAffineGapCosts &gapCosts,
+		   int frameshiftCost, size_t frameSize) {
+  size_t gapSize1 = y.beg1() - x.end1();
+  size_t gapSize2, frameshift2;
+  sizeAndFrameshift(x.end2(), y.beg2(), frameSize, gapSize2, frameshift2);
+  int cost = gapCosts.cost(gapSize1, gapSize2);
+  if (frameshift2) cost += frameshiftCost;
+  return cost;
+}
+
 bool Alignment::isOptimal( const uchar* seq1, const uchar* seq2, int globality,
 			   const ScoreMatrixRow* scoreMatrix, int maxDrop,
-			   const GeneralizedAffineGapCosts& gap,
+			   const GeneralizedAffineGapCosts& gapCosts,
 			   int frameshiftCost, size_t frameSize,
 			   const ScoreMatrixRow* pssm2,
                            const TwoQualityScoreMatrix& sm2qual,
-                           const uchar* qual1, const uchar* qual2 ){
+                           const uchar* qual1, const uchar* qual2 ) const{
   int maxScore = 0;
   int runningScore = 0;
 
   for( size_t i = 0; i < blocks.size(); ++i ){
     const SegmentPair& y = blocks[i];
+
     if( i > 0 ){  // between each pair of aligned blocks:
       const SegmentPair& x = blocks[i - 1];
-      size_t gapBeg1 = x.end1();
-      size_t gapEnd1 = y.beg1();
-      size_t gapSize1 = gapEnd1 - gapBeg1;
-
-      size_t gapBeg2 = x.end2();
-      size_t gapEnd2 = y.beg2();
-      size_t gapSize2, frameshift2;
-      sizeAndFrameshift( gapBeg2, gapEnd2, frameSize, gapSize2, frameshift2 );
-      if( frameshift2 ) runningScore -= frameshiftCost;
-
-      runningScore -= gap.cost( gapSize1, gapSize2 );
+      runningScore -= gapCost( x, y, gapCosts, frameshiftCost, frameSize );
       if( !globality && runningScore <= 0 ) return false;
       if( runningScore < maxScore - maxDrop ) return false;
     }
@@ -200,6 +204,7 @@ bool Alignment::isOptimal( const uchar* seq1, const uchar* seq2, int globality,
     const uchar* s1 = seq1 + y.beg1();
     const uchar* s2 = seq2 + y.beg2();
     const uchar* e1 = seq1 + y.end1();
+
     const ScoreMatrixRow* p2 = pssm2 ? pssm2 + y.beg2() : 0;
     const uchar* q1 = qual1 ? qual1 + y.beg1() : 0;
     const uchar* q2 = qual2 ? qual2 + y.beg2() : 0;
@@ -219,9 +224,71 @@ bool Alignment::isOptimal( const uchar* seq1, const uchar* seq2, int globality,
   return true;
 }
 
+bool Alignment::hasGoodSegment(const uchar *seq1, const uchar *seq2,
+			       int minScore, const ScoreMatrixRow *scoreMatrix,
+			       const GeneralizedAffineGapCosts &gapCosts,
+			       int frameshiftCost, size_t frameSize,
+			       const ScoreMatrixRow *pssm2,
+			       const TwoQualityScoreMatrix &sm2qual,
+			       const uchar *qual1, const uchar *qual2) const {
+  int score = 0;
+
+  for (size_t i = 0; i < blocks.size(); ++i) {
+    const SegmentPair& y = blocks[i];
+
+    if (i > 0) {  // between each pair of aligned blocks:
+      score -= gapCost(blocks[i - 1], y, gapCosts, frameshiftCost, frameSize);
+      if (score < 0) score = 0;
+    }
+
+    const uchar *s1 = seq1 + y.beg1();
+    const uchar *s2 = seq2 + y.beg2();
+    const uchar *e1 = seq1 + y.end1();
+
+    const ScoreMatrixRow *p2 = pssm2 ? pssm2 + y.beg2() : 0;
+    const uchar *q1 = qual1 ? qual1 + y.beg1() : 0;
+    const uchar *q2 = qual2 ? qual2 + y.beg2() : 0;
+
+    while (s1 < e1) {
+      /**/ if (sm2qual) score += sm2qual(*s1++, *s2++, *q1++, *q2++);
+      else if (pssm2)   score += (*p2++)[*s1++];
+      else              score += scoreMatrix[*s1++][*s2++];
+
+      if (score >= minScore) return true;
+      if (score < 0) score = 0;
+    }
+  }
+
+  return false;
+}
+
+static void getColumnAmbiguities(const Centroid& centroid,
+				 std::vector<uchar>& ambiguityCodes,
+				 const std::vector<SegmentPair>& chunks,
+				 bool isForward) {
+  for (size_t i = 0; i < chunks.size(); ++i) {
+    const SegmentPair& x = chunks[i];
+    centroid.getMatchAmbiguities(ambiguityCodes, x.end1(), x.end2(), x.size);
+    size_t j = i + 1;
+    bool isNext = (j < chunks.size());
+    size_t end1 = isNext ? chunks[j].end1() : 0;
+    size_t end2 = isNext ? chunks[j].end2() : 0;
+    // ASSUMPTION: if there is an insertion adjacent to a deletion,
+    // the deletion will get printed first.
+    if (isForward) {
+      centroid.getInsertAmbiguities(ambiguityCodes, x.beg2(), end2);
+      centroid.getDeleteAmbiguities(ambiguityCodes, x.beg1(), end1);
+    } else {
+      centroid.getDeleteAmbiguities(ambiguityCodes, x.beg1(), end1);
+      centroid.getInsertAmbiguities(ambiguityCodes, x.beg2(), end2);
+    }
+  }
+}
+
 void Alignment::extend( std::vector< SegmentPair >& chunks,
 			std::vector< uchar >& ambiguityCodes,
-			GappedXdropAligner& aligner, Centroid& centroid,
+			Centroid& centroid,
+			GreedyXdropAligner& greedyAligner, bool isGreedy,
 			const uchar* seq1, const uchar* seq2,
 			size_t start1, size_t start2,
 			bool isForward, int globality,
@@ -233,8 +300,11 @@ void Alignment::extend( std::vector< SegmentPair >& chunks,
                         const uchar* qual1, const uchar* qual2,
 			const Alphabet& alph, AlignmentExtras& extras,
 			double gamma, int outputType ){
+  GappedXdropAligner& aligner = centroid.aligner();
+
   if( frameSize ){
     assert( outputType < 4 );
+    assert( !isGreedy );
     assert( !globality );
     assert( !pssm2 );
     assert( !sm2qual );
@@ -262,22 +332,24 @@ void Alignment::extend( std::vector< SegmentPair >& chunks,
   }
 
   int extensionScore =
-    sm2qual ? aligner.align2qual( seq1 + start1, qual1 + start1,
-				  seq2 + start2, qual2 + start2,
-				  isForward, globality, sm2qual,
-				  gap.delExist, gap.delExtend,
-				  gap.insExist, gap.insExtend,
-				  gap.pairExtend, maxDrop, smMax )
-    : pssm2 ? aligner.alignPssm( seq1 + start1, pssm2 + start2,
-				 isForward, globality,
-				 gap.delExist, gap.delExtend,
-				 gap.insExist, gap.insExtend,
-				 gap.pairExtend, maxDrop, smMax )
-    :         aligner.align( seq1 + start1, seq2 + start2,
-			     isForward, globality, sm,
-			     gap.delExist, gap.delExtend,
-			     gap.insExist, gap.insExtend,
-			     gap.pairExtend, maxDrop, smMax );
+    isGreedy  ? greedyAligner.align( seq1 + start1, seq2 + start2,
+				     isForward, sm, maxDrop, alph.size )
+    : sm2qual ? aligner.align2qual( seq1 + start1, qual1 + start1,
+				    seq2 + start2, qual2 + start2,
+				    isForward, globality, sm2qual,
+				    gap.delExist, gap.delExtend,
+				    gap.insExist, gap.insExtend,
+				    gap.pairExtend, maxDrop, smMax )
+    : pssm2   ? aligner.alignPssm( seq1 + start1, pssm2 + start2,
+				   isForward, globality,
+				   gap.delExist, gap.delExtend,
+				   gap.insExist, gap.insExtend,
+				   gap.pairExtend, maxDrop, smMax )
+    :           aligner.align( seq1 + start1, seq2 + start2,
+			       isForward, globality, sm,
+			       gap.delExist, gap.delExtend,
+			       gap.insExist, gap.insExtend,
+			       gap.pairExtend, maxDrop, smMax );
 
   if( extensionScore == -INF ){
     score = -INF;  // avoid score overflow
@@ -288,14 +360,20 @@ void Alignment::extend( std::vector< SegmentPair >& chunks,
 
   if( outputType < 5 || outputType == 7 ){  // ordinary max-score alignment
     size_t end1, end2, size;
-    while( aligner.getNextChunk( end1, end2, size,
-				 gap.delExist, gap.delExtend,
-				 gap.insExist, gap.insExtend,
-				 gap.pairExtend ) )
-      chunks.push_back( SegmentPair( end1 - size, end2 - size, size ) );
+    if( isGreedy ){
+      while( greedyAligner.getNextChunk( end1, end2, size ) )
+	chunks.push_back( SegmentPair( end1 - size, end2 - size, size ) );
+    }else{
+      while( aligner.getNextChunk( end1, end2, size,
+				   gap.delExist, gap.delExtend,
+				   gap.insExist, gap.insExtend,
+				   gap.pairExtend ) )
+	chunks.push_back( SegmentPair( end1 - size, end2 - size, size ) );
+    }
   }
 
   if( outputType > 3 ){  // calculate match probabilities
+    assert( !isGreedy );
     assert( !sm2qual );
     centroid.reset();
     centroid.forward( seq1, seq2, start1, start2, isForward, globality, gap );
@@ -306,7 +384,7 @@ void Alignment::extend( std::vector< SegmentPair >& chunks,
       centroid.traceback( chunks, gamma );
     }
 
-    centroid.getColumnAmbiguities( ambiguityCodes, chunks, isForward );
+    getColumnAmbiguities( centroid, ambiguityCodes, chunks, isForward );
     extras.fullScore += centroid.logPartitionFunction();
 
     if( outputType == 7 ){

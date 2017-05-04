@@ -59,7 +59,7 @@ namespace cbrc {
 // Puts 7 "dummy" antidiagonals at the start, so that we can safely
 // look-back from subsequent antidiagonals.
 void GappedXdropAligner::init3() {
-  seq1starts.resize(0);
+  scoreOrigins.resize(0);
   scoreEnds.resize(1);
 
   initAntidiagonal3(0, 0, 0);
@@ -82,15 +82,9 @@ void GappedXdropAligner::init3() {
 void GappedXdropAligner::initAntidiagonal3(std::size_t seq1beg,
                                            std::size_t scoreEnd,
                                            std::size_t numCells) {
+  scoreOrigins.push_back(scoreEnd - seq1beg + 1);
   std::size_t newEnd = scoreEnd + numCells + 2;  // + 2 pad cells
-
-  if (xScores.size() < newEnd) {
-    xScores.resize(newEnd);
-    yScores.resize(newEnd);
-    zScores.resize(newEnd);
-  }
-
-  seq1starts.push_back(seq1beg);
+  resizeScoresIfSmaller(newEnd);
   scoreEnds.push_back(newEnd);
 }
 

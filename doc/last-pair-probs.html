@@ -349,15 +349,15 @@ probability &gt; 0.01.</p>
 next two reads are paired, and so on.  We can align them to the human
 genome like this:</p>
 <pre class="literal-block">
-lastdb -uNEAR hg human-genome.fasta
-lastal -Q1 -e120 -i1 hg interleaved.fastq &gt; temp.maf
+lastdb -uNEAR -R01 hg human-genome.fasta
+lastal -Q1 -D1000 -i1 hg interleaved.fastq &gt; temp.maf
 last-pair-probs temp.maf &gt; out.maf
 </pre>
 <p>Suppose we have paired reads in two files, where the two first reads
 are paired, the two second reads are paired, and so on.  We can
 interleave them like this:</p>
 <pre class="literal-block">
-fastq-interleave x.fastq y.fastq | lastal -Q1 -e120 -i1 hg &gt; temp.maf
+fastq-interleave x.fastq y.fastq | lastal -Q1 -D1000 -i1 hg &gt; temp.maf
 </pre>
 </div>
 <div class="section" id="reads-from-potentially-spliced-rna-molecules">
@@ -379,13 +379,13 @@ distribution, and then to estimate alignment probabilities.  It is
 more efficient to estimate the distance distribution from a small
 sample of the data:</p>
 <pre class="literal-block">
-lastal -Q1 -e120 -i1 hg sample.fastq | last-pair-probs -e
+lastal -Q1 -D1000 -i1 hg sample.fastq | last-pair-probs -e
 </pre>
 <p>Suppose this tells us that the mean distance is 250 and the standard
 deviation is 38.5.  We can use that to estimate the alignment
 probabilities:</p>
 <pre class="literal-block">
-lastal -Q1 -e120 -i1 hg all.fastq | last-pair-probs -f250 -s38.5 &gt; out.maf
+lastal -Q1 -D1000 -i1 hg all.fastq | last-pair-probs -f250 -s38.5 &gt; out.maf
 </pre>
 </div>
 <div class="section" id="going-faster-by-parallelization">
@@ -393,7 +393,7 @@ lastal -Q1 -e120 -i1 hg all.fastq | last-pair-probs -f250 -s38.5 &gt; out.maf
 <p>This will run the pipeline on all your CPU cores:</p>
 <pre class="literal-block">
 fastq-interleave x.fastq y.fastq |
-parallel-fastq &quot;lastal -Q1 -e120 -i1 hg | last-pair-probs -f250 -s38.5&quot; &gt; out.maf
+parallel-fastq &quot;lastal -Q1 -D1000 -i1 hg | last-pair-probs -f250 -s38.5&quot; &gt; out.maf
 </pre>
 <p>It requires GNU parallel to be installed
 (<a class="reference external" href="http://www.gnu.org/software/parallel/">http://www.gnu.org/software/parallel/</a>).</p>
@@ -421,8 +421,8 @@ lastal) describing the alignment parameters.</p>
 </li>
 <li><p class="first">It is also possible to supply the alignments in two files:</p>
 <pre class="literal-block">
-lastal -Q1 -e120 -i1 hg x.fastq &gt; temp1.maf
-lastal -Q1 -e120 -i1 hg y.fastq &gt; temp2.maf
+lastal -Q1 -D1000 -i1 hg x.fastq &gt; temp1.maf
+lastal -Q1 -D1000 -i1 hg y.fastq &gt; temp2.maf
 last-pair-probs temp1.maf temp2.maf &gt; out.maf
 </pre>
 </li>

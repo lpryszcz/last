@@ -76,7 +76,8 @@ class TwoQualityScoreMatrix {
             bool isPhred2,
             int qualityOffset2,
             const uchar *toUnmasked,  // maps letters to unmasked letters
-            bool isApplyMasking);
+            bool isMask,
+	    bool isMatchMismatchMatrix);  // if "true", init is faster
 
   // Tests whether init has been called:
   operator const void *() const { return data.empty() ? 0 : this; }

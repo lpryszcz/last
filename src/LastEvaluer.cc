@@ -241,6 +241,14 @@ static void shrinkCodonTable(long *codonTable, const size_t *usedLettersBeg,
 			      usedLettersEnd, codonTable[i]) - usedLettersBeg;
 }
 
+static void makeTxFreqs(double *txFreqs, const double *ntFreqs,
+			const long *codonTable) {
+  for (int i = 0; i < 4; ++i)
+    for (int j = 0; j < 4; ++j)
+      for (int k = 0; k < 4; ++k)
+	txFreqs[*codonTable++] += ntFreqs[i] * ntFreqs[j] * ntFreqs[k];
+}
+
 void LastEvaluer::init(const char *matrixName,
 		       int matchScore,
 		       int mismatchCost,
@@ -264,7 +272,7 @@ void LastEvaluer::init(const char *matrixName,
   const double maxSeconds = 60.0;  // seems to work nicely on my computer
   size_t alphabetSize = std::strlen(alphabet);
 
-  if (frameshiftCost > 0) {  // DNA-versus-protein alignment with frameshifts:
+  if (frameshiftCost >= 0) {  // DNA-versus-protein alignment:
     if (isGapped && insOpen == delOpen && insEpen == delEpen) {
       if (isProtein(alphabet) && isStandardGeneticCode) {
 	for (size_t i = 0; i < COUNTOF(frameshiftEvalueParameters); ++i) {
@@ -290,16 +298,31 @@ void LastEvaluer::init(const char *matrixName,
     std::vector<double> aaFreqs(matrixSize);
     copy(letterFreqs1, letterFreqs1 + alphabetSize, aaFreqs.begin());
 
-    if (isGapped) {
-      frameshiftEvaluer.initFrameshift(4, matrixSize, codonTable,
-				       &matrix[0], &ntFreqs[0], &aaFreqs[0],
-				       delOpen, delEpen, insOpen, insEpen,
-				       frameshiftCost, true,
-				       lambdaTolerance, kTolerance,
-				       0, maxMegabytes, randomSeed);
-    } else {
-      frameshiftEvaluer.initGapless(4, matrixSize, codonTable,
-				    &matrix[0], &ntFreqs[0], &aaFreqs[0]);
+    if (frameshiftCost > 0) {  // with frameshifts:
+      if (isGapped) {
+	frameshiftEvaluer.initFrameshift(4, matrixSize, codonTable,
+					 &matrix[0], &ntFreqs[0], &aaFreqs[0],
+					 delOpen, delEpen, insOpen, insEpen,
+					 frameshiftCost, true,
+					 lambdaTolerance, kTolerance,
+					 0, maxMegabytes, randomSeed);
+      } else {
+	frameshiftEvaluer.initGapless(4, matrixSize, codonTable,
+				      &matrix[0], &ntFreqs[0], &aaFreqs[0]);
+      }
+    } else {  // without frameshifts:
+      std::vector<double> txFreqs(matrixSize);
+      makeTxFreqs(&txFreqs[0], &ntFreqs[0], codonTable);
+
+      if (isGapped) {
+	evaluer.set_gapped_computation_parameters_simplified(maxSeconds);
+	evaluer.initGapped(matrixSize, &matrix[0], &txFreqs[0], &aaFreqs[0],
+			   delOpen, delEpen, insOpen, insEpen,
+			   true, lambdaTolerance, kTolerance,
+			   0, maxMegabytes, randomSeed);
+      } else {
+	evaluer.initGapless(matrixSize, &matrix[0], &txFreqs[0], &aaFreqs[0]);
+      }
     }
   } else {  // ordinary alignment:
     if (isGapped && insOpen == delOpen && insEpen == delEpen) {

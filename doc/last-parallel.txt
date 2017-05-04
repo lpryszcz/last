@@ -53,11 +53,11 @@ try this::
 
 Instead of this::
 
-  lastal -Q1 -e120 db q.fastq | last-split > out.maf
+  lastal -Q1 -D100 db q.fastq | last-split > out.maf
 
 try this::
 
-  parallel-fastq "lastal -Q1 -e120 db | last-split" < q.fastq > out.maf
+  parallel-fastq "lastal -Q1 -D100 db | last-split" < q.fastq > out.maf
 
 Instead of this::
 

@@ -19,7 +19,7 @@
 using namespace cbrc;
 
 std::string CyclicSubsetSeed::stringFromName( const std::string& name ){
-  for( std::size_t i = 0; i < COUNTOF(subsetSeeds); ++i )
+  for( size_t i = 0; i < COUNTOF(subsetSeeds); ++i )
     if( name == subsetSeeds[i].name )
       return subsetSeeds[i].text;
 

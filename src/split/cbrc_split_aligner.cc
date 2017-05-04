@@ -129,54 +129,51 @@ int SplitAligner::calcSpliceScore(double dist) const {
     return std::floor(scale * s + 0.5);
 }
 
-// The dinucleotide immediately downstream of the given coordinate
-unsigned SplitAligner::spliceBegSignal(unsigned coordinate,
-				       char strand) const {
-  if (strand == '+') {
-    const uchar *genomeBeg = genome.seqReader();
-    const uchar *p = genomeBeg + coordinate;
-    unsigned n1 = alphabet.numbersToUppercase[*p];
-    if (n1 >= 4) return 16;
-    unsigned n2 = alphabet.numbersToUppercase[*(p + 1)];
-    if (n2 >= 4) return 16;
-    return n1 * 4 + n2;
-  } else {
-    const uchar *genomeEnd = genome.seqReader() + genome.finishedSize();
-    const uchar *p = genomeEnd - coordinate;
-    unsigned n1 = alphabet.numbersToUppercase[*(p - 1)];
-    if (n1 >= 4) return 16;
-    unsigned n2 = alphabet.numbersToUppercase[*(p - 2)];
-    if (n2 >= 4) return 16;
-    return 15 - (n1 * 4 + n2);  // reverse-complement
-  }
+// The dinucleotide immediately downstream on the forward strand
+static unsigned spliceBegSignalFwd(const uchar *seqPtr,
+				   const uchar *toUnmasked) {
+  unsigned n1 = toUnmasked[*seqPtr];
+  if (n1 >= 4) return 16;
+  unsigned n2 = toUnmasked[*(seqPtr + 1)];
+  if (n2 >= 4) return 16;
+  return n1 * 4 + n2;
 }
 
-// The dinucleotide immediately upstream of the given coordinate
-unsigned SplitAligner::spliceEndSignal(unsigned coordinate,
-				       char strand) const {
-  if (strand == '+') {
-    const uchar *genomeBeg = genome.seqReader();
-    const uchar *p = genomeBeg + coordinate;
-    unsigned n2 = alphabet.numbersToUppercase[*(p - 1)];
-    if (n2 >= 4) return 16;
-    unsigned n1 = alphabet.numbersToUppercase[*(p - 2)];
-    if (n1 >= 4) return 16;
-    return n1 * 4 + n2;
-  } else {
-    const uchar *genomeEnd = genome.seqReader() + genome.finishedSize();
-    const uchar *p = genomeEnd - coordinate;
-    unsigned n2 = alphabet.numbersToUppercase[*p];
-    if (n2 >= 4) return 16;
-    unsigned n1 = alphabet.numbersToUppercase[*(p + 1)];
-    if (n1 >= 4) return 16;
-    return 15 - (n1 * 4 + n2);  // reverse-complement
-  }
+// The dinucleotide immediately downstream on the reverse strand
+static unsigned spliceBegSignalRev(const uchar *seqPtr,
+				   const uchar *toUnmasked) {
+  unsigned n1 = toUnmasked[*(seqPtr - 1)];
+  if (n1 >= 4) return 16;
+  unsigned n2 = toUnmasked[*(seqPtr - 2)];
+  if (n2 >= 4) return 16;
+  return 15 - (n1 * 4 + n2);  // reverse-complement
+}
+
+// The dinucleotide immediately upstream on the forward strand
+static unsigned spliceEndSignalFwd(const uchar *seqPtr,
+				   const uchar *toUnmasked) {
+  unsigned n2 = toUnmasked[*(seqPtr - 1)];
+  if (n2 >= 4) return 16;
+  unsigned n1 = toUnmasked[*(seqPtr - 2)];
+  if (n1 >= 4) return 16;
+  return n1 * 4 + n2;
+}
+
+// The dinucleotide immediately upstream on the reverse strand
+static unsigned spliceEndSignalRev(const uchar *seqPtr,
+				   const uchar *toUnmasked) {
+  unsigned n2 = toUnmasked[*seqPtr];
+  if (n2 >= 4) return 16;
+  unsigned n1 = toUnmasked[*(seqPtr + 1)];
+  if (n1 >= 4) return 16;
+  return 15 - (n1 * 4 + n2);  // reverse-complement
 }
 
 unsigned SplitAligner::findScore(unsigned j, long score) const {
   for (unsigned i = 0; i < numAlns; ++i) {
     if (dpBeg(i) >= j || dpEnd(i) < j) continue;
-    if (cell(Vmat, i, j) + spliceBegScore(i, j) == score) return i;
+    size_t ij = matrixRowOrigins[i] + j;
+    if (Vmat[ij] + spliceBegScore(ij) == score) return i;
   }
   return numAlns;
 }
@@ -184,16 +181,18 @@ unsigned SplitAligner::findScore(unsigned j, long score) const {
 unsigned SplitAligner::findSpliceScore(unsigned i, unsigned j,
 				       long score) const {
     assert(splicePrior > 0.0);
+    size_t ij = matrixRowOrigins[i] + j;
     unsigned iSeq = rnameAndStrandIds[i];
-    unsigned iEnd = cell(spliceEndCoords, i, j);
-    int iScore = spliceEndScore(i, j);
+    unsigned iEnd = spliceEndCoords[ij];
+    int iScore = spliceEndScore(ij);
     for (unsigned k = 0; k < numAlns; k++) {
 	if (rnameAndStrandIds[k] != iSeq) continue;
 	if (dpBeg(k) >= j || dpEnd(k) < j) continue;
-	unsigned kBeg = cell(spliceBegCoords, k, j);
+	size_t kj = matrixRowOrigins[k] + j;
+	unsigned kBeg = spliceBegCoords[kj];
 	if (iEnd <= kBeg) continue;
-	int s = iScore + spliceBegScore(k, j) + spliceScore(iEnd - kBeg);
-	if (cell(Vmat, k, j) + s == score) return k;
+	int s = iScore + spliceBegScore(kj) + spliceScore(iEnd - kBeg);
+	if (Vmat[kj] + s == score) return k;
     }
     return numAlns;
 }
@@ -201,30 +200,29 @@ unsigned SplitAligner::findSpliceScore(unsigned i, unsigned j,
 long SplitAligner::scoreFromSplice(unsigned i, unsigned j,
 				   unsigned oldNumInplay,
 				   unsigned& oldInplayPos) const {
+  size_t ij = matrixRowOrigins[i] + j;
   long score = LONG_MIN;
   unsigned iSeq = rnameAndStrandIds[i];
-  unsigned iEnd = cell(spliceEndCoords, i, j);
+  unsigned iEnd = spliceEndCoords[ij];
 
   for (/* noop */; oldInplayPos < oldNumInplay; ++oldInplayPos) {
     unsigned k = oldInplayAlnIndices[oldInplayPos];
     if (rnameAndStrandIds[k] < iSeq) continue;
-    if (rnameAndStrandIds[k] > iSeq) return score;
-    if (rBegs[k] >= iEnd) return score;
-    unsigned kBeg = cell(spliceBegCoords, k, j);
+    if (rnameAndStrandIds[k] > iSeq || rBegs[k] >= iEnd) return score;
+    size_t kj = matrixRowOrigins[k] + j;
+    unsigned kBeg = spliceBegCoords[kj];
     if (kBeg >= rBegs[i] || rBegs[i] - kBeg <= maxSpliceDist) break;
   }
 
-  int iScore = spliceEndScore(i, j);
-
   for (unsigned y = oldInplayPos; y < oldNumInplay; ++y) {
     unsigned k = oldInplayAlnIndices[y];
-    if (rnameAndStrandIds[k] > iSeq) break;
-    if (rBegs[k] >= iEnd) break;
-    unsigned kBeg = cell(spliceBegCoords, k, j);
+    if (rnameAndStrandIds[k] > iSeq || rBegs[k] >= iEnd) break;
+    size_t kj = matrixRowOrigins[k] + j;
+    unsigned kBeg = spliceBegCoords[kj];
     if (iEnd <= kBeg) continue;
     if (iEnd - kBeg > maxSpliceDist) continue;
-    int s = iScore + spliceBegScore(k, j) + spliceScore(iEnd - kBeg);
-    score = std::max(score, cell(Vmat, k, j) + s);
+    score = std::max(score,
+		     Vmat[kj] + spliceBegScore(kj) + spliceScore(iEnd - kBeg));
   }
 
   return score;
@@ -319,18 +317,19 @@ long SplitAligner::viterbi() {
 	long sMax = INT_MIN/2;
 	for (unsigned x = 0; x < newNumInplay; ++x) {
 	    unsigned i = newInplayAlnIndices[x];
-	    size_t k = matrixRowOrigins[i] + j;
+	    size_t ij = matrixRowOrigins[i] + j;
 
-	    long s = std::max(Vmat[k] + Dmat[k],
-			      scoreFromJump + spliceEndScore(i, j));
-	    if (restartProb <= 0 && alns[i].qstart == j && s < 0) s = 0;
+	    long s = scoreFromJump;
 	    if (splicePrior > 0.0)
 	      s = std::max(s,
 			   scoreFromSplice(i, j, oldNumInplay, oldInplayPos));
-	    s += Amat[k];
+	    s += spliceEndScore(ij);
+	    s = std::max(s, Vmat[ij] + Dmat[ij]);
+	    if (restartProb <= 0 && alns[i].qstart == j && s < 0) s = 0;
+	    s += Amat[ij];
 
-	    Vmat[k+1] = s;
-	    sMax = std::max(sMax, s + spliceBegScore(i, j+1));
+	    Vmat[ij + 1] = s;
+	    sMax = std::max(sMax, s + spliceBegScore(ij + 1));
 	}
 	maxScore = std::max(sMax, maxScore);
 	cell(Vvec, j+1) = maxScore;
@@ -376,9 +375,9 @@ void SplitAligner::traceBack(long viterbiScore,
   queryEnds.push_back(j);
 
   for (;;) {
-    long score = cell(Vmat, i, j);
     --j;
-    score -= cell(Amat, i, j);
+    size_t ij = matrixRowOrigins[i] + j;
+    long score = Vmat[ij + 1] - Amat[ij];
     if (restartProb <= 0 && alns[i].qstart == j && score == 0) {
       queryBegs.push_back(j);
       return;
@@ -390,10 +389,10 @@ void SplitAligner::traceBack(long viterbiScore,
     // makes some other kinds of boundary less clean.  What's the best
     // procedure for tied scores?
 
-    bool isStay = (score == scoreIndel(i, j));
+    bool isStay = (score == Vmat[ij] + Dmat[ij]);
     if (isStay && alns[i].qstrand == '+') continue;
 
-    long s = score - spliceEndScore(i, j);
+    long s = score - spliceEndScore(ij);
     long t = s - restartScore;
     if (t == cell(Vvec, j)) {
       queryBegs.push_back(j);
@@ -417,8 +416,9 @@ int SplitAligner::segmentScore(unsigned alnNum,
   int score = 0;
   unsigned i = alnNum;
   for (unsigned j = queryBeg; j < queryEnd; ++j) {
-    score += cell(Amat, i, j);
-    if (j > queryBeg) score += cell(Dmat, i, j);
+    size_t ij = matrixRowOrigins[i] + j;
+    score += Amat[ij];
+    if (j > queryBeg) score += Dmat[ij];
   }
   return score;
 }
@@ -426,30 +426,28 @@ int SplitAligner::segmentScore(unsigned alnNum,
 double SplitAligner::probFromSpliceF(unsigned i, unsigned j,
 				     unsigned oldNumInplay,
 				     unsigned& oldInplayPos) const {
+  size_t ij = matrixRowOrigins[i] + j;
   double sum = 0.0;
   unsigned iSeq = rnameAndStrandIds[i];
-  unsigned iEnd = cell(spliceEndCoords, i, j);
+  unsigned iEnd = spliceEndCoords[ij];
 
   for (/* noop */; oldInplayPos < oldNumInplay; ++oldInplayPos) {
     unsigned k = oldInplayAlnIndices[oldInplayPos];
     if (rnameAndStrandIds[k] < iSeq) continue;
-    if (rnameAndStrandIds[k] > iSeq) return sum;
-    if (rBegs[k] >= iEnd) return sum;
-    unsigned kBeg = cell(spliceBegCoords, k, j);
+    if (rnameAndStrandIds[k] > iSeq || rBegs[k] >= iEnd) return sum;
+    size_t kj = matrixRowOrigins[k] + j;
+    unsigned kBeg = spliceBegCoords[kj];
     if (kBeg >= rBegs[i] || rBegs[i] - kBeg <= maxSpliceDist) break;
   }
 
-  double iProb = spliceEndProb(i, j);
-
   for (unsigned y = oldInplayPos; y < oldNumInplay; ++y) {
     unsigned k = oldInplayAlnIndices[y];
-    if (rnameAndStrandIds[k] > iSeq) break;
-    if (rBegs[k] >= iEnd) break;
-    unsigned kBeg = cell(spliceBegCoords, k, j);
+    if (rnameAndStrandIds[k] > iSeq || rBegs[k] >= iEnd) break;
+    size_t kj = matrixRowOrigins[k] + j;
+    unsigned kBeg = spliceBegCoords[kj];
     if (iEnd <= kBeg) continue;
     if (iEnd - kBeg > maxSpliceDist) continue;
-    double p = iProb * spliceBegProb(k, j) * spliceProb(iEnd - kBeg);
-    sum += cell(Fmat, k, j) * p;
+    sum += Fmat[kj] * spliceBegProb(kj) * spliceProb(iEnd - kBeg);
   }
 
   return sum;
@@ -458,30 +456,28 @@ double SplitAligner::probFromSpliceF(unsigned i, unsigned j,
 double SplitAligner::probFromSpliceB(unsigned i, unsigned j,
 				     unsigned oldNumInplay,
 				     unsigned& oldInplayPos) const {
+  size_t ij = matrixRowOrigins[i] + j;
   double sum = 0.0;
   unsigned iSeq = rnameAndStrandIds[i];
-  unsigned iBeg = cell(spliceBegCoords, i, j);
+  unsigned iBeg = spliceBegCoords[ij];
 
   for (/* noop */; oldInplayPos < oldNumInplay; ++oldInplayPos) {
     unsigned k = oldInplayAlnIndices[oldInplayPos];
     if (rnameAndStrandIds[k] < iSeq) continue;
-    if (rnameAndStrandIds[k] > iSeq) return sum;
-    if (rEnds[k] <= iBeg) return sum;
-    unsigned kEnd = cell(spliceEndCoords, k, j);
+    if (rnameAndStrandIds[k] > iSeq || rEnds[k] <= iBeg) return sum;
+    size_t kj = matrixRowOrigins[k] + j;
+    unsigned kEnd = spliceEndCoords[kj];
     if (kEnd <= rEnds[i] || kEnd - rEnds[i] <= maxSpliceDist) break;
   }
 
-  double iProb = spliceBegProb(i, j);
-
   for (unsigned y = oldInplayPos; y < oldNumInplay; ++y) {
     unsigned k = oldInplayAlnIndices[y];
-    if (rnameAndStrandIds[k] > iSeq) break;
-    if (rEnds[k] <= iBeg) break;
-    unsigned kEnd = cell(spliceEndCoords, k, j);
+    if (rnameAndStrandIds[k] > iSeq || rEnds[k] <= iBeg) break;
+    size_t kj = matrixRowOrigins[k] + j;
+    unsigned kEnd = spliceEndCoords[kj];
     if (kEnd <= iBeg) continue;
     if (kEnd - iBeg > maxSpliceDist) continue;
-    double p = iProb * spliceEndProb(k, j) * spliceProb(kEnd - iBeg);
-    sum += cell(Bmat, k, j) * p;
+    sum += Bmat[kj] * spliceEndProb(kj) * spliceProb(kEnd - iBeg);
   }
 
   return sum;
@@ -513,17 +509,19 @@ void SplitAligner::forward() {
 	double rNew = 1.0;
 	for (unsigned x = 0; x < newNumInplay; ++x) {
 	    unsigned i = newInplayAlnIndices[x];
-	    size_t k = matrixRowOrigins[i] + j;
+	    size_t ij = matrixRowOrigins[i] + j;
 
-	    double p = Fmat[k] * Dexp[k] + probFromJump * spliceEndProb(i, j);
-	    if (restartProb <= 0 && alns[i].qstart == j) p += begprob;
+	    double p = probFromJump;
 	    if (splicePrior > 0.0)
 	      p += probFromSpliceF(i, j, oldNumInplay, oldInplayPos);
-	    p = p * Aexp[k] / r;
+	    p *= spliceEndProb(ij);
+	    p += Fmat[ij] * Dexp[ij];
+	    if (restartProb <= 0 && alns[i].qstart == j) p += begprob;
+	    p = p * Aexp[ij] / r;
 
-	    Fmat[k+1] = p;
+	    Fmat[ij + 1] = p;
 	    if (alns[i].qend == j+1) zF += p;
-	    pSum += p * spliceBegProb(i, j+1);
+	    pSum += p * spliceBegProb(ij + 1);
 	    rNew += p;
         }
         begprob /= r;
@@ -559,17 +557,19 @@ void SplitAligner::backward() {
 	double pSum = 0.0;
 	for (unsigned x = 0; x < newNumInplay; ++x) {
 	    unsigned i = newInplayAlnIndices[x];
-	    size_t k = matrixRowOrigins[i] + j;
+	    size_t ij = matrixRowOrigins[i] + j;
 
-	    double p = Bmat[k] * Dexp[k] + probFromJump * spliceBegProb(i, j);
-	    if (restartProb <= 0 && alns[i].qend == j) p += endprob;
+	    double p = probFromJump;
 	    if (splicePrior > 0.0)
 	      p += probFromSpliceB(i, j, oldNumInplay, oldInplayPos);
-	    p = p * Aexp[k-1] / r;
+	    p *= spliceBegProb(ij);
+	    p += Bmat[ij] * Dexp[ij];
+	    if (restartProb <= 0 && alns[i].qend == j) p += endprob;
+	    p = p * Aexp[ij - 1] / r;
 
-	    Bmat[k-1] = p;
+	    Bmat[ij - 1] = p;
 	    //if (alns[i].qstart == j-1) zB += p;
-	    pSum += p * spliceEndProb(i, j-1);
+	    pSum += p * spliceEndProb(ij - 1);
         }
         endprob /= r;
 	sumProb = pSum * restartProb + sumProb / r;
@@ -587,11 +587,12 @@ SplitAligner::marginalProbs(unsigned queryBeg, unsigned alnNum,
     unsigned i = alnNum;
     unsigned j = queryBeg;
     for (unsigned pos = alnBeg; pos < alnEnd; ++pos) {
+	size_t ij = matrixRowOrigins[i] + j;
         if (alns[i].qalign[pos] == '-') {
-            double value = cell(Fmat, i, j) * cell(Bmat, i, j) * cell(Dexp, i, j) / cell(rescales, j);
+            double value = Fmat[ij] * Bmat[ij] * Dexp[ij] / cell(rescales, j);
             output.push_back(value);
         } else {
-            double value = cell(Fmat, i, j+1) * cell(Bmat, i, j) / cell(Aexp, i, j);
+            double value = Fmat[ij + 1] * Bmat[ij] / Aexp[ij];
             if (value != value) value = 0.0;
             output.push_back(value);
             j++;
@@ -600,7 +601,7 @@ SplitAligner::marginalProbs(unsigned queryBeg, unsigned alnNum,
     return output;
 }
 
-// The next 2 routines represent affine gap scores in a cunning way.
+// The next routine represents affine gap scores in a cunning way.
 // Amat holds scores at query bases, and at every base that is aligned
 // to a gap it gets a score of insExistenceScore + insExtensionScore.
 // Dmat holds scores between query bases, and between every pair of
@@ -609,151 +610,205 @@ SplitAligner::marginalProbs(unsigned queryBeg, unsigned alnNum,
 // if we jump from one alignment to another in the middle of a gap.
 
 void SplitAligner::calcBaseScores(unsigned i) {
-  int firstGapScore = insExistenceScore + insExtensionScore;
+  const int firstInsScore = insExistenceScore + insExtensionScore;
+  const int tweenInsScore = -insExistenceScore;
+
   const UnsplitAlignment& a = alns[i];
+  const size_t origin = matrixRowOrigins[i];
 
-  int *b = &cell(Amat, i, dpBeg(i));
-  int *s = &cell(Amat, i, a.qstart);
-  int *f = &cell(Amat, i, a.qend);
-  int *e = &cell(Amat, i, dpEnd(i));
+  int *AmatB = &Amat[origin + dpBeg(i)];
+  int *DmatB = &Dmat[origin + dpBeg(i)];
+  int *AmatS = &Amat[origin + a.qstart];
+  int *AmatE = &Amat[origin + dpEnd(i)];
 
-  while (b < s) *b++ = firstGapScore;
+  int delScore = 0;
+  int insCompensationScore = 0;
+
+  // treat any query letters before the alignment as insertions:
+  while (AmatB < AmatS) {
+    *AmatB++ = firstInsScore;
+    *DmatB++ = delScore + insCompensationScore;
+    delScore = 0;
+    insCompensationScore = tweenInsScore;
+  }
 
   const char *rAlign = a.ralign;
   const char *qAlign = a.qalign;
   const char *qQual = a.qQual;
 
-  while (b < f) {
+  while (*qAlign) {
     unsigned char x = *rAlign++;
     unsigned char y = *qAlign++;
     int q = qQual ? (*qQual++ - qualityOffset) : (numQualCodes - 1);
-    if (y == '-') /* noop */;
-    else if (x == '-') *b++ = firstGapScore;
-    else {
+    if (x == '-') {  // gap in reference sequence: insertion
+      *AmatB++ = firstInsScore;
+      *DmatB++ = delScore + insCompensationScore;
+      delScore = 0;
+      insCompensationScore = tweenInsScore;
+    } else if (y == '-') {  // gap in query sequence: deletion
+      if (delScore == 0) delScore = gapExistenceScore;
+      delScore += gapExtensionScore;
+      insCompensationScore = 0;
+    } else {
       assert(q >= 0);
       if (q >= numQualCodes) q = numQualCodes - 1;
-      *b++ = score_mat[x % 64][y % 64][q];
+      *AmatB++ = score_mat[x % 64][y % 64][q];
+      *DmatB++ = delScore;
+      delScore = 0;
+      insCompensationScore = 0;
     }
     // Amazingly, in ASCII, '.' equals 'n' mod 64.
     // So '.' will get the same scores as 'n'.
   }
 
-  while (b < e) *b++ = firstGapScore;
+  // treat any query letters after the alignment as insertions:
+  while (AmatB < AmatE) {
+    *AmatB++ = firstInsScore;
+    *DmatB++ = delScore + insCompensationScore;
+    delScore = 0;
+    insCompensationScore = tweenInsScore;
+  }
+
+  *DmatB++ = delScore;
 }
 
-void SplitAligner::calcInsScores(unsigned i) {
-  const UnsplitAlignment& a = alns[i];
-  bool isExt = false;
-
-  int *b = &cell(Dmat, i, dpBeg(i));
-  int *s = &cell(Dmat, i, a.qstart);
-  int *e = &cell(Dmat, i, dpEnd(i));
-
-  while (b < s) {
-    *b++ = (isExt ? -insExistenceScore : 0);
-    isExt = true;
-  }
-
-  const char *rAlign = a.ralign;
-  const char *qAlign = a.qalign;
-
-  while (*qAlign) {
-    bool isDel = (*qAlign++ == '-');
-    bool isIns = (*rAlign++ == '-');
-    if (!isDel) *b++ = (isIns && isExt ? -insExistenceScore : 0);
-    isExt = isIns;
-  }
-
-  while (b < e) {
-    *b++ = (isExt ? -insExistenceScore : 0);
-    isExt = true;
-  }
-
-  *b++ = 0;
-}
-
-void SplitAligner::calcDelScores(unsigned i) {
-  const UnsplitAlignment& a = alns[i];
-  int *b = &cell(Dmat, i, a.qstart);
-  const char *qAlign = a.qalign;
-  int delScore = 0;
-  while (*qAlign) {
-    if (*qAlign++ == '-') {  // deletion in query
-      if (delScore == 0) delScore = gapExistenceScore;
-      delScore += gapExtensionScore;
-    } else {
-      *b++ += delScore;
-      delScore = 0;
-    }
-  }
-  *b++ += delScore;
-}
-
-void SplitAligner::calcScoreMatrices() {
-  resizeMatrix(Amat);
-  resizeMatrix(Dmat);
-
-  for (unsigned i = 0; i < numAlns; i++) {
-    calcBaseScores(i);
-    calcInsScores(i);
-    calcDelScores(i);
-  }
-}
-
-void SplitAligner::initSpliceCoords() {
-  resizeMatrix(spliceBegCoords);
-  resizeMatrix(spliceEndCoords);
-
+void SplitAligner::initRbegsAndEnds() {
   for (unsigned i = 0; i < numAlns; ++i) {
     const UnsplitAlignment& a = alns[i];
-    unsigned j = dpBeg(i);
-    unsigned k = a.rstart;
-
-    if (!chromosomeIndex.empty()) {
-      StringNumMap::const_iterator f = chromosomeIndex.find(a.rname);
-      if (f == chromosomeIndex.end())
-	err("can't find " + std::string(a.rname) + " in the genome");
-      unsigned c = f->second;
-      if (a.qstrand == '+') k += genome.seqBeg(c);
-      else                  k += genome.finishedSize() - genome.seqEnd(c);
-    }
-
-    rBegs[i] = k;
-    cell(spliceBegCoords, i, j) = k;
-    while (j < a.qstart) {
-      cell(spliceEndCoords, i, j) = k;
-      ++j;
-      cell(spliceBegCoords, i, j) = k;
-    }
-    for (unsigned x = 0; a.ralign[x]; ++x) {
-      if (a.qalign[x] != '-') cell(spliceEndCoords, i, j) = k;
-      if (a.qalign[x] != '-') ++j;
-      if (a.ralign[x] != '-') ++k;
-      if (a.qalign[x] != '-') cell(spliceBegCoords, i, j) = k;
-    }
-    while (j < dpEnd(i)) {
-      cell(spliceEndCoords, i, j) = k;
-      ++j;
-      cell(spliceBegCoords, i, j) = k;
-    }
-    cell(spliceEndCoords, i, j) = k;
-    rEnds[i] = k;
+    rBegs[i] = a.rstart;
+    rEnds[i] = a.rend;
   }
 }
 
-void SplitAligner::initSpliceSignals() {
-  resizeMatrix(spliceBegSignals);
-  resizeMatrix(spliceEndSignals);
+void SplitAligner::initSpliceCoords(unsigned i) {
+  const UnsplitAlignment& a = alns[i];
+  unsigned j = dpBeg(i);
+  unsigned k = a.rstart;
 
-  for (unsigned i = 0; i < numAlns; ++i) {
-    char strand = alns[i].qstrand;
-    for (unsigned j = dpBeg(i); j <= dpEnd(i); ++j) {
-      cell(spliceBegSignals, i, j) =
-	spliceBegSignal(cell(spliceBegCoords, i, j), strand);
-      cell(spliceEndSignals, i, j) =
-	spliceEndSignal(cell(spliceEndCoords, i, j), strand);
+  cell(spliceBegCoords, i, j) = k;
+  while (j < a.qstart) {
+    cell(spliceEndCoords, i, j) = k;
+    ++j;
+    cell(spliceBegCoords, i, j) = k;
+  }
+  for (unsigned x = 0; a.ralign[x]; ++x) {
+    if (a.qalign[x] != '-') cell(spliceEndCoords, i, j) = k;
+    if (a.qalign[x] != '-') ++j;
+    if (a.ralign[x] != '-') ++k;
+    if (a.qalign[x] != '-') cell(spliceBegCoords, i, j) = k;
+  }
+  while (j < dpEnd(i)) {
+    cell(spliceEndCoords, i, j) = k;
+    ++j;
+    cell(spliceBegCoords, i, j) = k;
+  }
+  cell(spliceEndCoords, i, j) = k;
+
+  assert(k == a.rend);  // xxx
+}
+
+static const uchar *seqBeg(const MultiSequence &m, size_t sequenceIndex) {
+  return m.seqReader() + m.seqBeg(sequenceIndex);
+}
+
+static const uchar *seqEnd(const MultiSequence &m, size_t sequenceIndex) {
+  return m.seqReader() + m.seqEnd(sequenceIndex);
+}
+
+void SplitAligner::initSpliceSignals(unsigned i) {
+  const uchar *toUnmasked = alphabet.numbersToUppercase;
+  const UnsplitAlignment& a = alns[i];
+
+  StringNumMap::const_iterator f = chromosomeIndex.find(a.rname);
+  if (f == chromosomeIndex.end())
+    err("can't find " + std::string(a.rname) + " in the genome");
+  size_t v = f->second % maxGenomeVolumes();
+  size_t c = f->second / maxGenomeVolumes();
+  const uchar *chromBeg = seqBeg(genome[v], c);
+  const uchar *chromEnd = seqEnd(genome[v], c);
+  if (a.rend > chromEnd - chromBeg)
+    err("alignment beyond the end of " + std::string(a.rname));
+
+  size_t rowBeg = matrixRowOrigins[i] + dpBeg(i);
+  const unsigned *begCoords = &spliceBegCoords[rowBeg];
+  const unsigned *endCoords = &spliceEndCoords[rowBeg];
+  unsigned char *begSignals = &spliceBegSignals[rowBeg];
+  unsigned char *endSignals = &spliceEndSignals[rowBeg];
+  unsigned dpLen = dpEnd(i) - dpBeg(i);
+
+  if (a.qstrand == '+') {
+    for (unsigned j = 0; j <= dpLen; ++j) {
+      begSignals[j] = spliceBegSignalFwd(chromBeg + begCoords[j], toUnmasked);
+      endSignals[j] = spliceEndSignalFwd(chromBeg + endCoords[j], toUnmasked);
+    }
+  } else {
+    for (unsigned j = 0; j <= dpLen; ++j) {
+      begSignals[j] = spliceBegSignalRev(chromEnd - begCoords[j], toUnmasked);
+      endSignals[j] = spliceEndSignalRev(chromEnd - endCoords[j], toUnmasked);
     }
   }
+}
+
+const uchar sequenceEndSentinel = 4;
+
+static void getNextSignal(uchar *out, const uchar *seq) {
+  out[0] = seq[0];
+  out[1] = (seq[0] == sequenceEndSentinel) ? sequenceEndSentinel : seq[1];
+}
+
+static void getPrevSignal(uchar *out, const uchar *seq) {
+  out[1] = seq[-1];
+  out[0] = (seq[-1] == sequenceEndSentinel) ? sequenceEndSentinel : seq[-2];
+}
+
+static char decodeOneBase(const uchar *decode, uchar x) {
+  return (x == sequenceEndSentinel) ? 'N' : decode[x];
+}
+
+static void decodeSpliceSignal(char *out,
+			       const uchar *signal,
+			       const uchar *decode,
+			       const uchar *complement,
+			       bool isSameStrand) {
+  if (isSameStrand) {
+    out[0] = decodeOneBase(decode, signal[0]);
+    out[1] = decodeOneBase(decode, signal[1]);
+  } else {
+    out[0] = decodeOneBase(decode, complement[signal[1]]);
+    out[1] = decodeOneBase(decode, complement[signal[0]]);
+  }
+}
+
+void SplitAligner::spliceBegSignal(char *out,
+				   unsigned alnNum, unsigned queryPos,
+				   bool isSenseStrand) const {
+  const UnsplitAlignment& a = alns[alnNum];
+  bool isForwardStrand = (a.qstrand == '+');
+  StringNumMap::const_iterator f = chromosomeIndex.find(a.rname);
+  size_t v = f->second % maxGenomeVolumes();
+  size_t c = f->second / maxGenomeVolumes();
+  uchar signal[2];
+  unsigned coord = cell(spliceBegCoords, alnNum, queryPos);
+  if (isForwardStrand) getNextSignal(signal, seqBeg(genome[v], c) + coord);
+  else                 getPrevSignal(signal, seqEnd(genome[v], c) - coord);
+  decodeSpliceSignal(out, signal, alphabet.decode, alphabet.complement,
+		     isSenseStrand == isForwardStrand);
+}
+
+void SplitAligner::spliceEndSignal(char *out,
+				   unsigned alnNum, unsigned queryPos,
+				   bool isSenseStrand) const {
+  const UnsplitAlignment& a = alns[alnNum];
+  bool isForwardStrand = (a.qstrand == '+');
+  StringNumMap::const_iterator f = chromosomeIndex.find(a.rname);
+  size_t v = f->second % maxGenomeVolumes();
+  size_t c = f->second / maxGenomeVolumes();
+  uchar signal[2];
+  unsigned coord = cell(spliceEndCoords, alnNum, queryPos);
+  if (isForwardStrand) getPrevSignal(signal, seqBeg(genome[v], c) + coord);
+  else                 getNextSignal(signal, seqEnd(genome[v], c) - coord);
+  decodeSpliceSignal(out, signal, alphabet.decode, alphabet.complement,
+		     isSenseStrand == isForwardStrand);
 }
 
 struct RnameAndStrandLess {
@@ -780,27 +835,13 @@ void SplitAligner::initRnameAndStrandIds() {
   }
 }
 
-void SplitAligner::initForwardBackward() {
-  resizeMatrix(Aexp);
-  transform(Amat.begin(), Amat.end(), Aexp.begin(), scaledExp);
-
-  resizeMatrix(Dexp);
-  transform(Dmat.begin(), Dmat.end(), Dexp.begin(), scaledExp);
-
-  // if x/scale < about -745, then exp(x/scale) will be exactly 0.0
-}
-
-int SplitAligner::maxJumpScore() const {
-  int m = jumpScore;
-  if (splicePrior > 0.0) {
-    double s = spliceTerm1 - meanLogDist + sdevLogDist * sdevLogDist / 2.0;
-    int maxSpliceScore = std::floor(scale * s + 0.5);
-    m = std::max(m, maxSpliceScore);
-  }
-  if (!chromosomeIndex.empty()) {
-    m += arrayMax(spliceBegScores) + arrayMax(spliceEndScores);
-  }
-  return m;
+void SplitAligner::dpExtensionMinScores(int maxJumpScore,
+					size_t& minScore1,
+					size_t& minScore2) const {
+  if (!chromosomeIndex.empty()) maxJumpScore += maxSpliceBegEndScore;
+  assert(maxJumpScore + insExistenceScore <= 0);
+  minScore1 = 1 - (maxJumpScore + insExistenceScore);
+  minScore2 = 1 - (maxJumpScore + maxJumpScore + insExistenceScore);
 }
 
 static size_t dpExtension(size_t maxScore, size_t minScore, size_t divisor) {
@@ -842,10 +883,8 @@ void SplitAligner::initDpBounds() {
   size_t minScore1 = -1;
   size_t minScore2 = -1;
   if (jumpProb > 0.0 || splicePrior > 0.0) {
-    int m = maxJumpScore();
-    assert(m + insExistenceScore <= 0);
-    minScore1 = 1 - (m + insExistenceScore);
-    minScore2 = 1 - (m + m + insExistenceScore);
+    int m = (splicePrior > 0.0) ? maxSpliceScore : jumpScore;
+    dpExtensionMinScores(m, minScore1, minScore2);
   }
 
   for (unsigned i = 0; i < numAlns; ++i) {
@@ -875,14 +914,11 @@ void SplitAligner::initDpBounds() {
   }
 }
 
-void SplitAligner::initForOneQuery(std::vector<UnsplitAlignment>::const_iterator beg,
-				   std::vector<UnsplitAlignment>::const_iterator end) {
+void SplitAligner::layout(std::vector<UnsplitAlignment>::const_iterator beg,
+			  std::vector<UnsplitAlignment>::const_iterator end) {
     assert(end > beg);
     numAlns = end - beg;
     alns = beg;
-
-    initDpBounds();
-    calcScoreMatrices();
 
     sortedAlnIndices.resize(numAlns);
     for (unsigned i = 0; i < numAlns; ++i) sortedAlnIndices[i] = i;
@@ -893,13 +929,47 @@ void SplitAligner::initForOneQuery(std::vector<UnsplitAlignment>::const_iterator
     rEnds.resize(numAlns);
 
     if (splicePrior > 0.0 || !chromosomeIndex.empty()) {
-        initSpliceCoords();
-	if (!chromosomeIndex.empty()) initSpliceSignals();
+	initRbegsAndEnds();
 	//initRnameAndStrandIds();
     }
     initRnameAndStrandIds();
 
-    initForwardBackward();
+    initDpBounds();
+}
+
+size_t SplitAligner::memory(bool isViterbi, bool isBothSpliceStrands) const {
+  size_t numOfStrands = isBothSpliceStrands ? 2 : 1;
+  size_t x = 2 * sizeof(int) + 2 * sizeof(double);
+  if (splicePrior > 0 || !chromosomeIndex.empty()) x += 2 * sizeof(unsigned);
+  if (!chromosomeIndex.empty()) x += 2;
+  if (isViterbi) x += sizeof(long) * numOfStrands;
+  x += 2 * sizeof(double) * numOfStrands;
+  return x * cellsPerDpMatrix();
+}
+
+void SplitAligner::initMatricesForOneQuery() {
+  resizeMatrix(Amat);
+  resizeMatrix(Dmat);
+  resizeMatrix(Aexp);
+  resizeMatrix(Dexp);
+
+  for (unsigned i = 0; i < numAlns; i++) calcBaseScores(i);
+
+  if (splicePrior > 0.0 || !chromosomeIndex.empty()) {
+    resizeMatrix(spliceBegCoords);
+    resizeMatrix(spliceEndCoords);
+    for (unsigned i = 0; i < numAlns; ++i) initSpliceCoords(i);
+  }
+
+  if (!chromosomeIndex.empty()) {
+    resizeMatrix(spliceBegSignals);
+    resizeMatrix(spliceEndSignals);
+    for (unsigned i = 0; i < numAlns; ++i) initSpliceSignals(i);
+  }
+
+  transform(Amat.begin(), Amat.end(), Aexp.begin(), scaledExp);
+  transform(Dmat.begin(), Dmat.end(), Dexp.begin(), scaledExp);
+  // if x/scale < about -745, then exp(x/scale) will be exactly 0.0
 }
 
 void SplitAligner::flipSpliceSignals() {
@@ -916,13 +986,13 @@ void SplitAligner::flipSpliceSignals() {
   }
 }
 
-double SplitAligner::spliceSignalStrandProb() const {
+double SplitAligner::spliceSignalStrandLogOdds() const {
   assert(rescales.size() == rescalesRev.size());
-  double r = 1.0;
+  double logOdds = 0;
   for (unsigned j = 0; j < rescales.size(); ++j) {
-    r *= rescalesRev[j] / rescales[j];
-  }  // r might overflow to inf, but that should be OK
-  return 1.0 / (1.0 + r);
+    logOdds += std::log(rescales[j] / rescalesRev[j]);
+  }
+  return logOdds;
 }
 
 // 1st 1 million reads from SRR359290.fastq:
@@ -951,14 +1021,18 @@ void SplitAligner::setSpliceParams(double splicePriorIn,
   if (splicePrior <= 0.0) return;
 
   const double rootTwoPi = std::sqrt(8.0 * std::atan(1.0));
+  double s2 = sdevLogDist * sdevLogDist;
   spliceTerm1 = -std::log(sdevLogDist * rootTwoPi / splicePrior);
-  spliceTerm2 = -1.0 / (2.0 * sdevLogDist * sdevLogDist);
+  spliceTerm2 = -0.5 / s2;
+
+  double max1 = spliceTerm1 - meanLogDist + s2 * 0.5;
+  int max2 = std::floor(scale * max1 + 0.5);
+  maxSpliceScore = std::max(max2, jumpScore);
 
   // Set maxSpliceDist so as to ignore splices whose score would be
   // less than jumpScore.  By solving this quadratic equation:
   // spliceTerm1 + spliceTerm2 * (logDist - meanLogDist)^2 - logDist =
   // jumpScore / scale
-  double s2 = sdevLogDist * sdevLogDist;
   double r = s2 + 2 * (spliceTerm1 - meanLogDist - jumpScore / scale);
   if (r < 0) {
     maxSpliceDist = 0;
@@ -1053,6 +1127,8 @@ void SplitAligner::setSpliceSignals() {
     spliceBegProbs[i] = scaledExp(spliceBegScores[i]);
     spliceEndProbs[i] = scaledExp(spliceEndScores[i]);
   }
+
+  maxSpliceBegEndScore = arrayMax(spliceBegScores) + arrayMax(spliceEndScores);
 }
 
 void SplitAligner::printParameters() const {
@@ -1080,10 +1156,12 @@ void SplitAligner::printParameters() const {
   }
 }
 
-void SplitAligner::readGenome(const std::string& baseName) {
-  std::string alphabetLetters;
-  unsigned seqCount = -1;
-  unsigned volumes = -1;
+static void readPrjFile(const std::string& baseName,
+			std::string& alphabetLetters,
+			size_t& seqCount,
+			size_t& volumes) {
+  size_t fileBitsPerInt = 32;
+  seqCount = volumes = -1;
 
   std::string fileName = baseName + ".prj";
   std::ifstream f(fileName.c_str());
@@ -1095,21 +1173,49 @@ void SplitAligner::readGenome(const std::string& baseName) {
     getline(iss, word, '=');
     if (word == "alphabet") iss >> alphabetLetters;
     if (word == "numofsequences") iss >> seqCount;
-    if( word == "volumes" ) iss >> volumes;
+    if (word == "volumes") iss >> volumes;
+    if (word == "integersize") iss >> fileBitsPerInt;
   }
 
-  if (alphabetLetters != "ACGT" || seqCount+1 == 0)
-    err("can't read file: " + fileName);
+  if (alphabetLetters != "ACGT") err("can't read file: " + fileName);
 
-  if (volumes+1 > 0 && volumes > 1)
-    err("can't read multi-volume lastdb files, sorry");
+  if (fileBitsPerInt != sizeof(MultiSequence::indexT) * CHAR_BIT) {
+    if (fileBitsPerInt == 32) err("please use last-split for " + baseName);
+    if (fileBitsPerInt == 64) err("please use last-split8 for " + baseName);
+    err("weird integersize in " + fileName);
+  }
+}
 
-  genome.fromFiles(baseName, seqCount, 0);
+void SplitAligner::readGenomeVolume(const std::string& baseName,
+				    size_t seqCount,
+				    size_t volumeNumber) {
+  if (seqCount + 1 == 0) err("can't read: " + baseName);
 
-  for (unsigned i = 0; i < seqCount; ++i) {
-    std::string n = genome.seqName(i);
-    if (!chromosomeIndex.insert(std::make_pair(n, i)).second)
+  genome[volumeNumber].fromFiles(baseName, seqCount, 0);
+
+  for (unsigned long long i = 0; i < seqCount; ++i) {
+    std::string n = genome[volumeNumber].seqName(i);
+    unsigned long long j = i * maxGenomeVolumes() + volumeNumber;
+    if (!chromosomeIndex.insert(std::make_pair(n, j)).second)
       err("duplicate sequence name: " + n);
+  }
+}
+
+void SplitAligner::readGenome(const std::string& baseName) {
+  std::string alphabetLetters;
+  size_t seqCount, volumes;
+  readPrjFile(baseName, alphabetLetters, seqCount, volumes);
+
+  if (volumes + 1 > 0 && volumes > 1) {
+    if (volumes > maxGenomeVolumes()) err("too many volumes: " + baseName);
+    for (size_t i = 0; i < volumes; ++i) {
+      std::string b = baseName + stringify(i);
+      size_t c, v;
+      readPrjFile(b, alphabetLetters, c, v);
+      readGenomeVolume(b, c, i);
+    }
+  } else {
+    readGenomeVolume(baseName, seqCount, 0);
   }
 
   alphabet.fromString(alphabetLetters);

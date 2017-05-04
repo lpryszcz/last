@@ -30,7 +30,7 @@
 
 File name: sls_basic.hpp
 
-Author: Sergey Sheetlin
+Author: Sergey Sheetlin, Martin Frith
 
 Contents: Some basic functions and types
 
@@ -48,7 +48,8 @@ Contents: Some basic functions and types
 #endif
 
 #include <iomanip>
-#include <cmath>
+#include <cmath>  // ?
+#include <math.h>
 #include <string>
 
 namespace Sls { 
@@ -184,8 +185,15 @@ namespace Sls {
 		static void get_current_time(
 		double &seconds_);
 
+		static long int random_seed_from_time();
+
 		static double one_minus_exp_function(
 		double y_);
+
+		static double normal_probability(double x_)
+		{
+			return 0.5*erfc(-sqrt(0.5)*x_);
+		}
 
 		static double normal_probability(
 		double x_,

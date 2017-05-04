@@ -27,13 +27,19 @@
 
 File name: sls_basic.cpp
 
-Author: Sergey Sheetlin
+Author: Sergey Sheetlin, Martin Frith
 
 Contents: Some basic functions and types
 
 ******************************************************************************/
 
+// 2016: this voodoo is needed to compile on Cygwin, with g++ options
+// such as -std=c++11 or -std=c++03, else it complains about gettimeofday
+#define _DEFAULT_SOURCE 1
+
 #include "sls_basic.hpp"
+#include <cstdlib>  // std::abs
+#include <ctime>
 
 using namespace Sls;
 
@@ -65,6 +71,24 @@ double &seconds_)
 	seconds_=timebuffer.time+(double)(timebuffer.millitm)/1000.0;
 
 #endif
+}
+
+long int sls_basic::random_seed_from_time()
+{
+	long int random_factor=(long int)std::time(NULL);
+#ifndef _MSC_VER //UNIX program
+	struct timeval tv;
+	struct timezone tz;
+	gettimeofday(&tv, &tz);
+	random_factor+=tv.tv_usec*10000000;
+#else
+	struct _timeb timebuffer;
+	char *timeline;
+	_ftime( &timebuffer );
+	timeline = ctime( & ( timebuffer.time ) );
+	random_factor+=timebuffer.millitm*10000000;
+#endif
+	return std::abs(random_factor);
 }
 
 double sls_basic::one_minus_exp_function(

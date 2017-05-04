@@ -349,11 +349,11 @@ a score=27 EG2=4.7e+04 E=2.6e-05
 s humanMito 2170 145 + 16571 AGTAGGCCTAAAAGCAGCCACCAATTAAGAAAGCGTT...
 s fuguMito  1648 142 + 16447 AGTAGGCTTAGAAGCAGCCACCA--CAAGAAAGCGTT...
 </pre>
-<p>The score is a measure of how strong the similarity is.  EG2 and E are
-explained at <a class="reference external" href="last-evalues.html">last-evalues.html</a>.  Lines starting with &quot;s&quot; contain:
-the sequence name, the start coordinate of the alignment, the number
-of bases spanned by the alignment, the strand, the sequence length,
-and the aligned bases.</p>
+<p>The score is a measure of how significant the similarity is.  EG2 and
+E are explained at <a class="reference external" href="last-evalues.html">last-evalues.html</a>.  Lines starting with &quot;s&quot;
+contain: the sequence name, the start coordinate of the alignment, the
+number of bases spanned by the alignment, the strand, the sequence
+length, and the aligned bases.</p>
 <p>The start coordinates are zero-based.  This means that, if the
 alignment begins right at the start of a sequence, the coordinate is
 0.  If the strand is &quot;-&quot;, the start coordinate is in the reverse
@@ -394,14 +394,12 @@ lastal -pPAM30 invdb vertebrate.fa
 <p>(How short is &quot;very short&quot;?  It depends on the amount of sequence data
 we are searching, but perhaps roughly less than 40 amino acids.)</p>
 </div>
-<div class="section" id="example-5-align-human-dna-reads-to-the-human-genome">
-<h2>Example 5: Align human DNA reads to the human genome</h2>
-<p>Suppose we have DNA reads in a file called reads.fastq, in
-fastq-sanger format.  We can align them to the human genome like
-this:</p>
+<div class="section" id="example-5-align-human-dna-sequences-to-the-human-genome">
+<h2>Example 5: Align human DNA sequences to the human genome</h2>
+<p>We can align human DNA sequences to the human genome like this:</p>
 <pre class="literal-block">
-lastdb -uNEAR humandb human/chr*.fa
-lastal -Q1 -e120 humandb reads.fastq | last-split &gt; myalns.maf
+lastdb -uNEAR -R01 humandb human/chr*.fa
+lastal humandb queries.fa | last-split &gt; myalns.maf
 </pre>
 <p>This will use about 15 gigabytes of memory.</p>
 <ul>
@@ -409,19 +407,59 @@ lastal -Q1 -e120 humandb reads.fastq | last-split &gt; myalns.maf
 better at finding short-and-strong similarities.  (It also changes
 the default scoring scheme.)</p>
 </li>
-<li><p class="first">The -Q1 option indicates that the reads are in fastq-sanger format.</p>
-</li>
-<li><p class="first">The -e120 option requests alignments with score ≥ 120.  This is
-intentionally a somewhat low score (high E-value): last-split then
-discards low-confidence alignments, but it uses them to estimate the
-ambiguity of high-confidence alignments.</p>
+<li><p class="first">-R01 tells it to mark simple sequences (such as cacacacacacacacaca)
+by lowercase, but not suppress them.  This has no effect on the
+alignment, but it allows us to see simple sequences in the output,
+and gives us the option to do <a class="reference external" href="last-postmask.html">post-alignment masking</a>.</p>
 </li>
 <li><p class="first">last-split reads the alignments produced by lastal, and looks for a
-unique best alignment for each part of each read.  It allows
-different parts of one read to match different parts of the genome.
-It has several useful options, please see <a class="reference external" href="last-split.html">last-split.html</a>.</p>
+unique best alignment for each part of each query.  It allows
+different parts of one query to match different parts of the genome,
+which may happen due to rearrangements.  It has several useful
+options, please see <a class="reference external" href="last-split.html">last-split.html</a>.</p>
 </li>
 </ul>
+</div>
+<div class="section" id="example-6-find-very-short-dna-alignments">
+<h2>Example 6: Find very short DNA alignments</h2>
+<p>By default, LAST is quite strict, and only reports significant
+alignments that will rarely occur by chance.  In the preceding
+example, the minimum alignment length is about 28 bases (less for
+smaller genomes).  To find shorter alignments, we must down-tune the
+strictness:</p>
+<pre class="literal-block">
+lastdb -uNEAR -R01 humandb human/chr*.fa
+lastal -D100 humandb queries.fa | last-split -m1 &gt; myalns.maf
+</pre>
+<ul>
+<li><p class="first">-D100 makes lastal report alignments that could occur by chance once
+per hundred query letters.  (The default is once per million.)</p>
+</li>
+<li><p class="first">-m1 tells last-split to keep low-confidence alignments.</p>
+</li>
+</ul>
+<p>In this example, the minimum alignment length is about 20 bases (less
+for smaller genomes).</p>
+</div>
+<div class="section" id="example-7-align-human-fastq-sequences-to-the-human-genome">
+<h2>Example 7: Align human fastq sequences to the human genome</h2>
+<p>DNA sequences are not always perfectly accurate, and they are
+sometimes provided in fastq format, which indicates the reliability of
+each base.  LAST can use this information to improve alignment
+accuracy.  (It assumes the reliabilities reflect substitution errors,
+not insertion/deletion errors: if that is not true, it may be better
+to use fasta format.)  Option -Q1 indicates fastq-sanger format:</p>
+<pre class="literal-block">
+lastdb -uNEAR -R01 humandb human/chr*.fa
+lastal -Q1 -D100 humandb queries.fastq | last-split &gt; myalns.maf
+</pre>
+</div>
+<div class="section" id="fastq-format-confusion">
+<h2>Fastq format confusion</h2>
+<p>Unfortunately, there is more than one fastq format (see
+<a class="reference external" href="http://nar.oxfordjournals.org/content/38/6/1767.long">http://nar.oxfordjournals.org/content/38/6/1767.long</a>).  Recently
+(2013) fastq-sanger seems to be dominant, but if you have another
+variant you need to change the -Q option (see <a class="reference external" href="lastal.html">lastal.html</a>).</p>
 </div>
 <div class="section" id="paired-reads">
 <h2>Paired reads</h2>
@@ -437,51 +475,6 @@ the two reads in a pair to match (e.g.) different chromosomes.</p>
 </li>
 </ol>
 </div>
-<div class="section" id="fastq-format-confusion">
-<h2>Fastq format confusion</h2>
-<p>Unfortunately, there is more than one fastq format (see
-<a class="reference external" href="http://nar.oxfordjournals.org/content/38/6/1767.long">http://nar.oxfordjournals.org/content/38/6/1767.long</a>).  Recently
-(2013) fastq-sanger seems to be dominant, but if you have another
-variant you need to change the -Q option (see <a class="reference external" href="lastal.html">lastal.html</a>).</p>
-</div>
-<div class="section" id="example-6-align-human-fasta-reads-to-the-human-genome">
-<h2>Example 6: Align human fasta reads to the human genome</h2>
-<p>If our reads are in fasta instead of fastq format, we simply omit -Q:</p>
-<pre class="literal-block">
-lastdb -uNEAR humandb human/chr*.fa
-lastal -e120 humandb reads.fa | last-split &gt; myalns.maf
-</pre>
-<p>(In older versions of LAST, we had to set a short-and-strong scoring
-scheme, but this is now done automatically by -uNEAR.)</p>
-</div>
-<div class="section" id="example-7-align-aardvark-fastq-reads-to-the-human-genome">
-<h2>Example 7: Align aardvark fastq reads to the human genome</h2>
-<p>In this case we expect weak similarities, so we omit -uNEAR.  We also
-need to change the scoring scheme (because with -Q1 it defaults to a
-short-and-strong scoring scheme):</p>
-<pre class="literal-block">
-lastdb -cR01 humandb human/chr*.fa
-lastal -Q1 -r5 -q5 -a35 -b5 humandb reads.fastq &gt; myalns.maf
-</pre>
-<p>Option -r5 sets the match score to 5, -q5 sets the mismatch cost to 5,
-while -a35 and -b5 set the gap cost to 35 + 5×(gap length).</p>
-<p>(Why use 5:5:35:5 rather than 1:1:7:1?  The reason is that 5:5:35:5
-has roughly the same scale as the fastq quality scores.  lastal uses
-the quality scores to modify the alignment scores, and then rounds the
-modified scores to integers.  If we used 1:1:7:1, the integer-rounding
-would lose information.)</p>
-</div>
-<div class="section" id="very-short-reads">
-<h2>Very short reads</h2>
-<p>WARNING!  The standard score parameters do not align very short reads.
-This is because the match score is 6 and the score threshold is 120,
-so at least 20 high-quality matches are required (or a greater number
-of low-quality matches).  In addition, last-split discards
-low-confidence alignments.  To align very short reads, reduce lastal's
-score threshold (-e) or increase last-split's error threshold (-m).</p>
-<p>If the score threshold is too low, you will get meaningless, random
-alignments.</p>
-</div>
 <div class="section" id="tuning-speed-sensitivity-memory-and-disk-usage">
 <h2>Tuning speed, sensitivity, memory and disk usage</h2>
 <ul>
@@ -496,7 +489,7 @@ alignments.</p>
 <p>If you have ~50 GB of memory and don't mind waiting a few days, this
 is a good way to compare such genomes:</p>
 <pre class="literal-block">
-lastdb -cR11 -uMAM8 catdb cat.fa
+lastdb -uMAM8 -cR11 catdb cat.fa
 lastal -m100 -E0.05 catdb rat.fa | last-split -m1 &gt; out.maf
 </pre>
 <p>This looks for a unique best alignment for each part of each rat
@@ -515,7 +508,7 @@ maf-swap out.maf | last-split -m1 &gt; out2.maf
 <p>For strongly similar genomes (e.g. 99% identity), something like this
 is more appropriate:</p>
 <pre class="literal-block">
-lastdb -cR11 -uNEAR human human.fa
+lastdb -uNEAR -cR11 human human.fa
 lastal -m50 -E0.05 human chimp.fa | last-split -m1 &gt; out.maf
 </pre>
 </div>

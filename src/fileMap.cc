@@ -24,10 +24,10 @@ static void err( const std::string& s ) {
 // loaded into memory, by reading it sequentially.  Without this,
 // random access can be horribly slow (at least on two Linux 2.6
 // systems).
-static void primeMemory( void* begin, std::size_t bytes ){
+static void primeMemory( void* begin, size_t bytes ){
   // use "static" to stop the compiler optimizing the whole function away:
   static unsigned z = 0;
-  std::size_t stepSize = 1024;
+  size_t stepSize = 1024;
   const char* x = static_cast<char*>(begin);
   const char* y = x + (bytes / stepSize) * stepSize;
   while( x < y ){
@@ -38,7 +38,7 @@ static void primeMemory( void* begin, std::size_t bytes ){
 
 namespace cbrc{
 
-void* openFileMap( const std::string& fileName, std::size_t bytes ){
+void* openFileMap( const std::string& fileName, size_t bytes ){
   if( bytes == 0 ) return 0;
 
   int f = open( fileName.c_str(), O_RDONLY );
@@ -55,7 +55,7 @@ void* openFileMap( const std::string& fileName, std::size_t bytes ){
   return m;
 }
 
-void closeFileMap( void* begin, std::size_t bytes ){
+void closeFileMap( void* begin, size_t bytes ){
   if( bytes == 0 ) return;
   int e = munmap( begin, bytes );
   if( e < 0 ) err( "failed to \"munmap\" " + stringify(bytes) + " bytes" );

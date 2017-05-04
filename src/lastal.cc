@@ -10,9 +10,9 @@
 #include "LambdaCalculator.hh"
 #include "LastEvaluer.hh"
 #include "GeneticCode.hh"
+#include "SubsetMinimizerFinder.hh"
 #include "SubsetSuffixArray.hh"
 #include "Centroid.hh"
-#include "GappedXdropAligner.hh"
 #include "AlignmentPot.hh"
 #include "Alignment.hh"
 #include "SegmentPairPot.hh"
@@ -23,32 +23,32 @@
 #include "TantanMasker.hh"
 #include "DiagonalTable.hh"
 #include "GeneralizedAffineGapCosts.hh"
+#include "GreedyXdropAligner.hh"
 #include "gaplessXdrop.hh"
 #include "gaplessPssmXdrop.hh"
 #include "gaplessTwoQualityXdrop.hh"
 #include "io.hh"
 #include "stringify.hh"
+#include "threadUtil.hh"
 #include <iomanip>  // setw
 #include <iostream>
 #include <fstream>
 #include <stdexcept>
 #include <cstdlib>  // EXIT_SUCCESS, EXIT_FAILURE
 
-#ifdef HAS_CXX_THREADS
-#include <thread>
-#endif
-
 #define ERR(x) throw std::runtime_error(x)
-#define LOG(x) if( args.verbosity > 0 ) std::cerr << "lastal: " << x << '\n'
+#define LOG(x) if( args.verbosity > 0 ) std::cerr << args.programName << ": " << x << '\n'
+#define LOG2(x) if( args.verbosity > 1 ) std::cerr << args.programName << ": " << x << '\n'
 
-static void warn( const char* s ){
-  std::cerr << "lastal: " << s << '\n';
+static void warn( const char* programName, const char* s ){
+  std::cerr << programName << ": " << s << '\n';
 }
 
 using namespace cbrc;
 
 struct LastAligner {  // data that changes between queries
   Centroid centroid;
+  GreedyXdropAligner greedyAligner;
   std::vector<int> qualityPssm;
   std::vector<AlignmentText> textAlns;
 };
@@ -101,7 +101,7 @@ void complementMatrix(const ScoreMatrixRow *from, ScoreMatrixRow *to) {
 // Set up a scoring matrix, based on the user options
 void makeScoreMatrix( const std::string& matrixName,
 		      const std::string& matrixFile ){
-  if( !matrixName.empty() ){
+  if( !matrixName.empty() && !args.isGreedy ){
     scoreMatrix.fromString( matrixFile );
   }
   else{
@@ -132,11 +132,15 @@ void permuteComplement(const double *from, double *to) {
 }
 
 void makeQualityScorers(){
+  if( args.isGreedy ) return;
+
   if( args.isTranslated() )
     if( isQuality( args.inputFormat ) || isQuality( referenceFormat ) )
-      return warn( "quality data not used for DNA-versus-protein alignment" );
+      return warn( args.programName,
+		   "quality data not used for DNA-versus-protein alignment" );
 
   const ScoreMatrixRow* m = scoreMatrix.caseSensitive;  // case isn't relevant
+  bool isMatchMismatch = (args.matrixFile.empty() && args.matchScore > 0);
   double lambda = lambdaCalculator.lambda();
   const double* lp1 = lambdaCalculator.letterProbs1();
   bool isPhred1 = isPhred( referenceFormat );
@@ -185,7 +189,6 @@ void makeQualityScorers(){
       }
     }
     else if( args.inputFormat == sequenceFormat::prb ){
-      bool isMatchMismatch = (args.matrixFile.empty() && args.matchScore > 0);
       qualityPssmMaker.init( m, alph.size, lambda, isMatchMismatch,
                              args.matchScore, -args.mismatchCost,
                              offset2, alph.numbersToUppercase );
@@ -200,26 +203,31 @@ void makeQualityScorers(){
       if( args.maskLowercase > 0 )
 	twoQualityMatrixMasked.init( m, lambda, lp1, lp2,
 				     isPhred1, offset1, isPhred2, offset2,
-				     alph.numbersToUppercase, true);
+				     alph.numbersToUppercase, true,
+				     isMatchMismatch );
       if( args.maskLowercase < 3 )
 	twoQualityMatrix.init( m, lambda, lp1, lp2,
 			       isPhred1, offset1, isPhred2, offset2,
-			       alph.numbersToUppercase, false );
+			       alph.numbersToUppercase, false,
+			       isMatchMismatch );
       if( args.outputType > 3 )
         ERR( "fastq-versus-fastq column probabilities not implemented" );
       if( args.isQueryStrandMatrix && args.strand != 1 ){
 	if( args.maskLowercase > 0 )
 	  twoQualityMatrixRevMasked.init( mRev, lambda, lp1rev, lp2rev,
 					  isPhred1, offset1, isPhred2, offset2,
-					  alph.numbersToUppercase, true );
+					  alph.numbersToUppercase, true,
+					  isMatchMismatch );
 	if( args.maskLowercase < 3 )
 	  twoQualityMatrixRev.init( mRev, lambda, lp1rev, lp2rev,
 				    isPhred1, offset1, isPhred2, offset2,
-				    alph.numbersToUppercase, false );
+				    alph.numbersToUppercase, false,
+				    isMatchMismatch );
       }
     }
     else{
-      warn("quality data not used for non-fastq query versus fastq reference");
+      warn(args.programName,
+	   "quality data not used for non-fastq query versus fastq reference");
     }
   }
 }
@@ -284,12 +292,13 @@ void calculateScoreStatistics( const std::string& matrixName,
 
 // Read the .prj file for the whole database
 void readOuterPrj( const std::string& fileName, unsigned& volumes,
-                   indexT& minSeedLimit,
+                   size_t& refMinimizerWindow, size_t& minSeedLimit,
 		   bool& isKeepRefLowercase, int& refTantanSetting,
                    countT& refSequences, countT& refLetters ){
   std::ifstream f( fileName.c_str() );
   if( !f ) ERR( "can't open file: " + fileName );
   unsigned version = 0;
+  size_t fileBitsPerInt = 32;
   std::string trigger = "#lastal";
 
   std::string line, word;
@@ -309,8 +318,10 @@ void readOuterPrj( const std::string& fileName, unsigned& volumes,
     if( word == "tantansetting" ) iss >> refTantanSetting;
     if( word == "masklowercase" ) iss >> isCaseSensitiveSeeds;
     if( word == "sequenceformat" ) iss >> referenceFormat;
+    if( word == "minimizerwindow" ) iss >> refMinimizerWindow;
     if( word == "volumes" ) iss >> volumes;
     if( word == "numofindexes" ) iss >> numOfIndexes;
+    if( word == "integersize" ) iss >> fileBitsPerInt;
   }
 
   if( f.eof() && !f.bad() ) f.clear();
@@ -322,6 +333,12 @@ void readOuterPrj( const std::string& fileName, unsigned& volumes,
   if( !f ) ERR( "can't read file: " + fileName );
   if( version < 294 && version > 0)
     ERR( "the lastdb files are old: please re-run lastdb" );
+
+  if( fileBitsPerInt != sizeof(indexT) * CHAR_BIT ){
+    if( fileBitsPerInt == 32 ) ERR( "please use lastal for " + fileName );
+    if( fileBitsPerInt == 64 ) ERR( "please use lastal8 for " + fileName );
+    ERR( "weird integersize in " + fileName );
+  }
 }
 
 // Read a per-volume .prj file, with info about a database volume
@@ -348,12 +365,10 @@ void readInnerPrj( const std::string& fileName,
 
 // Write match counts for each query sequence
 void writeCounts( std::ostream& out ){
-  LOG( "writing..." );
-
   for( indexT i = 0; i < matchCounts.size(); ++i ){
     out << query.seqName(i) << '\n';
 
-    for( indexT j = args.minHitDepth; j < matchCounts[i].size(); ++j ){
+    for( size_t j = args.minHitDepth; j < matchCounts[i].size(); ++j ){
       out << j << '\t' << matchCounts[i][j] << '\n';
     }
 
@@ -363,14 +378,12 @@ void writeCounts( std::ostream& out ){
 
 // Count all matches, of all sizes, of a query sequence against a suffix array
 void countMatches( size_t queryNum, const uchar* querySeq ){
-  LOG( "counting..." );
-
-  indexT loopBeg = query.seqBeg(queryNum) - query.padBeg(queryNum);
-  indexT loopEnd = query.seqEnd(queryNum) - query.padBeg(queryNum);
+  size_t loopBeg = query.seqBeg(queryNum) - query.padBeg(queryNum);
+  size_t loopEnd = query.seqEnd(queryNum) - query.padBeg(queryNum);
   if( args.minHitDepth > 1 )
     loopEnd -= std::min( args.minHitDepth - 1, loopEnd );
 
-  for( indexT i = loopBeg; i < loopEnd; i += args.queryStep ){
+  for( size_t i = loopBeg; i < loopEnd; i += args.queryStep ){
     for( unsigned x = 0; x < numOfIndexes; ++x )
       suffixArrays[x].countMatches( matchCounts[queryNum], querySeq + i,
 				    text.seqReader(), args.maxHitDepth );
@@ -420,6 +433,7 @@ static const uchar *getQueryQual(size_t queryNum) {
 
 static const ScoreMatrixRow *getQueryPssm(const LastAligner &aligner,
 					  size_t queryNum) {
+  if (args.isGreedy) return 0;
   if (args.inputFormat == sequenceFormat::pssm)
     return query.pssmReader() + query.padBeg(queryNum);
   const std::vector<int> &qualityPssm = aligner.qualityPssm;
@@ -429,6 +443,10 @@ static const ScoreMatrixRow *getQueryPssm(const LastAligner &aligner,
 }
 
 namespace Phase{ enum Enum{ gapless, gapped, final }; }
+
+static bool isMaskLowercase(Phase::Enum e) {
+  return (e < 1 && args.maskLowercase > 0) || args.maskLowercase > 2;
+}
 
 struct Dispatcher{
   const uchar* a;  // the reference sequence
@@ -448,11 +466,17 @@ struct Dispatcher{
       i( text.qualityReader() ),
       j( getQueryQual(queryNum) ),
       p( getQueryPssm(aligner, queryNum) ),
-      m( getScoreMatrix( strand, e < args.maskLowercase ) ),
-      t( getTwoQualityMatrix( strand, e < args.maskLowercase ) ),
+      m( getScoreMatrix( strand, isMaskLowercase(e) ) ),
+      t( getTwoQualityMatrix( strand, isMaskLowercase(e) ) ),
       d( (e == Phase::gapless) ? args.maxDropGapless :
          (e == Phase::gapped ) ? args.maxDropGapped : args.maxDropFinal ),
       z( t ? 2 : p ? 1 : 0 ){}
+
+  int gaplessOverlap( indexT x, indexT y, size_t &rev, size_t &fwd ) const{
+    if( z==0 ) return gaplessXdropOverlap( a+x, b+y, m, d, rev, fwd );
+    if( z==1 ) return gaplessPssmXdropOverlap( a+x, p+y, d, rev, fwd );
+    return gaplessTwoQualityXdropOverlap( a+x, i+x, b+y, j+y, t, d, rev, fwd );
+  }
 
   int forwardGaplessScore( indexT x, indexT y ) const{
     if( z==0 ) return forwardGaplessXdropScore( a+x, b+y, m, d );
@@ -513,76 +537,107 @@ static void writeAlignment(LastAligner &aligner, const Alignment &aln,
     printAndDelete(a.text);
 }
 
+static void writeSegmentPair(LastAligner &aligner, const SegmentPair &s,
+			     size_t queryNum, char strand,
+			     const uchar* querySeq) {
+  Alignment a;
+  a.fromSegmentPair(s);
+  writeAlignment(aligner, a, queryNum, strand, querySeq);
+}
+
 // Find query matches to the suffix array, and do gapless extensions
 void alignGapless( LastAligner& aligner, SegmentPairPot& gaplessAlns,
 		   size_t queryNum, char strand, const uchar* querySeq ){
+  const bool isOverlap = (args.globality && args.outputType == 1);
   Dispatcher dis( Phase::gapless, aligner, queryNum, strand, querySeq );
   DiagonalTable dt;  // record already-covered positions on each diagonal
   countT matchCount = 0, gaplessExtensionCount = 0, gaplessAlignmentCount = 0;
+  size_t significantAlignmentCount = 0;
 
-  indexT loopBeg = query.seqBeg(queryNum) - query.padBeg(queryNum);
-  indexT loopEnd = query.seqEnd(queryNum) - query.padBeg(queryNum);
+  size_t loopBeg = query.seqBeg(queryNum) - query.padBeg(queryNum);
+  size_t loopEnd = query.seqEnd(queryNum) - query.padBeg(queryNum);
   if( args.minHitDepth > 1 )
     loopEnd -= std::min( args.minHitDepth - 1, loopEnd );
 
+  std::vector< SubsetMinimizerFinder > minFinders( numOfIndexes );
+  for( unsigned x = 0; x < numOfIndexes; ++x ){
+    minFinders[x].init( suffixArrays[x].getSeed(), dis.b, loopBeg, loopEnd );
+  }
+
   for( indexT i = loopBeg; i < loopEnd; i += args.queryStep ){
     for( unsigned x = 0; x < numOfIndexes; ++x ){
+      const SubsetSuffixArray& sax = suffixArrays[x];
+      if( args.minimizerWindow > 1 &&
+	  !minFinders[x].isMinimizer( sax.getSeed(), dis.b, i, loopEnd,
+				      args.minimizerWindow ) ) continue;
       const indexT* beg;
       const indexT* end;
-      suffixArrays[x].match( beg, end, dis.b + i, dis.a,
-			     args.oneHitMultiplicity,
-			     args.minHitDepth, args.maxHitDepth );
+      sax.match( beg, end, dis.b + i, dis.a,
+		 args.oneHitMultiplicity, args.minHitDepth, args.maxHitDepth );
       matchCount += end - beg;
 
       // Tried: if we hit a delimiter when using contiguous seeds, then
       // increase "i" to the delimiter position.  This gave a speed-up
       // of only 3%, with 34-nt tags.
 
-      indexT gaplessAlignmentsPerQueryPosition = 0;
+      size_t gaplessAlignmentsPerQueryPosition = 0;
 
       for( /* noop */; beg < end; ++beg ){  // loop over suffix-array matches
 	if( gaplessAlignmentsPerQueryPosition ==
 	    args.maxGaplessAlignmentsPerQueryPosition ) break;
 
 	indexT j = *beg;  // coordinate in the reference sequence
-
 	if( dt.isCovered( i, j ) ) continue;
-
-	int fs = dis.forwardGaplessScore( j, i );
-	int rs = dis.reverseGaplessScore( j, i );
-	int score = fs + rs;
 	++gaplessExtensionCount;
+	int score;
 
-	// Tried checking the score after isOptimal & addEndpoint, but
-	// the number of extensions decreased by < 10%, and it was
-	// slower overall.
-	if( score < minScoreGapless ) continue;
+	if( isOverlap ){
+	  size_t revLen, fwdLen;
+	  score = dis.gaplessOverlap( j, i, revLen, fwdLen );
+	  if( score < minScoreGapless ) continue;
+	  SegmentPair sp( j - revLen, i - revLen, revLen + fwdLen, score );
+	  dt.addEndpoint( sp.end2(), sp.end1() );
+	  writeSegmentPair( aligner, sp, queryNum, strand, querySeq );
+	}else{
+	  int fs = dis.forwardGaplessScore( j, i );
+	  int rs = dis.reverseGaplessScore( j, i );
+	  score = fs + rs;
 
-	indexT tEnd = dis.forwardGaplessEnd( j, i, fs );
-	indexT tBeg = dis.reverseGaplessEnd( j, i, rs );
-	indexT qBeg = i - (j - tBeg);
-	if( !dis.isOptimalGapless( tBeg, tEnd, qBeg ) ) continue;
-	SegmentPair sp( tBeg, qBeg, tEnd - tBeg, score );
+	  // Tried checking the score after isOptimal & addEndpoint,
+	  // but the number of extensions decreased by < 10%, and it
+	  // was slower overall.
+	  if( score < minScoreGapless ) continue;
 
-	if( args.outputType == 1 ){  // we just want gapless alignments
-	  Alignment aln;
-	  aln.fromSegmentPair(sp);
-	  writeAlignment( aligner, aln, queryNum, strand, querySeq );
-	}
-	else{
-	  gaplessAlns.add(sp);  // add the gapless alignment to the pot
+	  indexT tEnd = dis.forwardGaplessEnd( j, i, fs );
+	  indexT tBeg = dis.reverseGaplessEnd( j, i, rs );
+	  indexT qBeg = i - (j - tBeg);
+	  if( !dis.isOptimalGapless( tBeg, tEnd, qBeg ) ) continue;
+	  SegmentPair sp( tBeg, qBeg, tEnd - tBeg, score );
+	  dt.addEndpoint( sp.end2(), sp.end1() );
+
+	  if( args.outputType == 1 ){  // we just want gapless alignments
+	    writeSegmentPair( aligner, sp, queryNum, strand, querySeq );
+	  }
+	  else{
+	    gaplessAlns.add(sp);  // add the gapless alignment to the pot
+	  }
 	}
 
 	++gaplessAlignmentsPerQueryPosition;
 	++gaplessAlignmentCount;
-	dt.addEndpoint( sp.end2(), sp.end1() );
+
+	if( score >= args.minScoreGapped &&
+	    ++significantAlignmentCount >= args.maxAlignmentsPerQueryStrand ) {
+	  i = loopEnd;
+	  break;
+	}
       }
     }
   }
 
-  LOG( "initial matches=" << matchCount );
-  LOG( "gapless extensions=" << gaplessExtensionCount );
-  LOG( "gapless alignments=" << gaplessAlignmentCount );
+  LOG2( "initial matches=" << matchCount );
+  LOG2( "gapless extensions=" << gaplessExtensionCount );
+  LOG2( "gapless alignments=" << gaplessAlignmentCount );
 }
 
 // Shrink the SegmentPair to its longest run of identical matches.
@@ -599,9 +654,8 @@ void alignGapped( LastAligner& aligner,
 		  AlignmentPot& gappedAlns, SegmentPairPot& gaplessAlns,
                   size_t queryNum, char strand, const uchar* querySeq,
 		  Phase::Enum phase ){
-  Centroid& centroid = aligner.centroid;
   Dispatcher dis( phase, aligner, queryNum, strand, querySeq );
-  indexT frameSize = args.isTranslated() ? (query.padLen(queryNum) / 3) : 0;
+  size_t frameSize = args.isFrameshift() ? (query.padLen(queryNum) / 3) : 0;
   countT gappedExtensionCount = 0, gappedAlignmentCount = 0;
 
   // Redo the gapless extensions, using gapped score parameters.
@@ -627,7 +681,7 @@ void alignGapped( LastAligner& aligner,
   gaplessAlns.cull( args.cullingLimitForGaplessAlignments );
   gaplessAlns.sort();  // sort by score descending, and remove duplicates
 
-  LOG( "redone gapless alignments=" << gaplessAlns.size() );
+  LOG2( "redone gapless alignments=" << gaplessAlns.size() );
 
   for( size_t i = 0; i < gaplessAlns.size(); ++i ){
     SegmentPair& sp = gaplessAlns.get(i);
@@ -641,10 +695,10 @@ void alignGapped( LastAligner& aligner,
     shrinkToLongestIdenticalRun( aln.seed, dis );
 
     // do gapped extension from each end of the seed:
-    aln.makeXdrop( centroid.aligner(), centroid, dis.a, dis.b, args.globality,
-		   dis.m, scoreMatrix.maxScore, gapCosts, dis.d,
-                   args.frameshiftCost, frameSize, dis.p,
-                   dis.t, dis.i, dis.j, alph, extras );
+    aln.makeXdrop( aligner.centroid, aligner.greedyAligner, args.isGreedy,
+		   dis.a, dis.b, args.globality, dis.m, scoreMatrix.maxScore,
+		   gapCosts, dis.d, args.frameshiftCost, frameSize,
+		   dis.p, dis.t, dis.i, dis.j, alph, extras );
     ++gappedExtensionCount;
 
     if( aln.score < args.minScoreGapped ) continue;
@@ -664,10 +718,11 @@ void alignGapped( LastAligner& aligner,
     else SegmentPairPot::markAsGood(sp);
 
     ++gappedAlignmentCount;
+    if( gappedAlignmentCount >= args.maxAlignmentsPerQueryStrand ) break;
   }
 
-  LOG( "gapped extensions=" << gappedExtensionCount );
-  LOG( "gapped alignments=" << gappedAlignmentCount );
+  LOG2( "gapped extensions=" << gappedExtensionCount );
+  LOG2( "gapped alignments=" << gappedAlignmentCount );
 }
 
 // Print the gapped alignments, after optionally calculating match
@@ -676,11 +731,10 @@ void alignFinish( LastAligner& aligner, const AlignmentPot& gappedAlns,
 		  size_t queryNum, char strand, const uchar* querySeq ){
   Centroid& centroid = aligner.centroid;
   Dispatcher dis( Phase::final, aligner, queryNum, strand, querySeq );
-  indexT frameSize = args.isTranslated() ? (query.padLen(queryNum) / 3) : 0;
+  size_t frameSize = args.isFrameshift() ? (query.padLen(queryNum) / 3) : 0;
 
   if( args.outputType > 3 ){
     if( dis.p ){
-      LOG( "exponentiating PSSM..." );
       centroid.setPssm( dis.p, query.padLen(queryNum), args.temperature,
                         getOneQualityExpMatrix(strand), dis.b, dis.j );
     }
@@ -689,8 +743,6 @@ void alignFinish( LastAligner& aligner, const AlignmentPot& gappedAlns,
     }
     centroid.setOutputType( args.outputType );
   }
-
-  LOG( "finishing..." );
 
   for( size_t i = 0; i < gappedAlns.size(); ++i ){
     const Alignment& aln = gappedAlns.items[i];
@@ -701,16 +753,32 @@ void alignFinish( LastAligner& aligner, const AlignmentPot& gappedAlns,
       Alignment probAln;
       AlignmentExtras extras;
       probAln.seed = aln.seed;
-      probAln.makeXdrop( centroid.aligner(), centroid,
+      probAln.makeXdrop( centroid, aligner.greedyAligner, args.isGreedy,
 			 dis.a, dis.b, args.globality,
 			 dis.m, scoreMatrix.maxScore, gapCosts, dis.d,
-                         args.frameshiftCost, frameSize, dis.p, dis.t,
-			 dis.i, dis.j, alph, extras,
+                         args.frameshiftCost, frameSize,
+			 dis.p, dis.t, dis.i, dis.j, alph, extras,
 			 args.gamma, args.outputType );
       assert( aln.score != -INF );
       writeAlignment( aligner, probAln, queryNum, strand, querySeq, extras );
     }
   }
+}
+
+static void eraseWeakAlignments(LastAligner &aligner, AlignmentPot &gappedAlns,
+				size_t queryNum, char strand,
+				const uchar *querySeq) {
+  size_t frameSize = args.isFrameshift() ? (query.padLen(queryNum) / 3) : 0;
+  Dispatcher dis(Phase::gapless, aligner, queryNum, strand, querySeq);
+  for (size_t i = 0; i < gappedAlns.size(); ++i) {
+    Alignment &a = gappedAlns.items[i];
+    if (!a.hasGoodSegment(dis.a, dis.b, args.minScoreGapped, dis.m, gapCosts,
+			  args.frameshiftCost, frameSize,
+			  dis.p, dis.t, dis.i, dis.j)) {
+      AlignmentPot::mark(a);
+    }
+  }
+  erase_if(gappedAlns.items, AlignmentPot::isMarked);
 }
 
 static bool lessForCulling(const AlignmentText &x, const AlignmentText &y) {
@@ -765,9 +833,8 @@ void makeQualityPssm( LastAligner& aligner,
 		      size_t queryNum, char strand, const uchar* querySeq,
 		      bool isMask ){
   if( !isQuality( args.inputFormat ) || isQuality( referenceFormat ) ) return;
-  if( args.isTranslated() ) return;
+  if( args.isTranslated() || args.isGreedy ) return;
 
-  LOG( "making PSSM..." );
   std::vector<int> &qualityPssm = aligner.qualityPssm;
   size_t queryLen = query.padLen(queryNum);
   qualityPssm.resize(queryLen * scoreMatrixRowSize);
@@ -798,32 +865,38 @@ void scan( LastAligner& aligner,
   bool isMask = (args.maskLowercase > 0);
   makeQualityPssm( aligner, queryNum, strand, querySeq, isMask );
 
-  LOG( "scanning..." );
-
   SegmentPairPot gaplessAlns;
   alignGapless( aligner, gaplessAlns, queryNum, strand, querySeq );
   if( args.outputType == 1 ) return;  // we just want gapless alignments
+  if( gaplessAlns.size() == 0 ) return;
 
-  if( args.maskLowercase == 1 )
+  if( args.maskLowercase == 1 || args.maskLowercase == 2 )
     makeQualityPssm( aligner, queryNum, strand, querySeq, false );
 
   AlignmentPot gappedAlns;
 
-  if( args.maskLowercase == 2 || args.maxDropFinal != args.maxDropGapped ){
+  if( args.maxDropFinal != args.maxDropGapped ){
     alignGapped( aligner, gappedAlns, gaplessAlns,
 		 queryNum, strand, querySeq, Phase::gapped );
     erase_if( gaplessAlns.items, SegmentPairPot::isNotMarkedAsGood );
   }
 
-  if( args.maskLowercase == 2 )
-    makeQualityPssm( aligner, queryNum, strand, querySeq, false );
-
   alignGapped( aligner, gappedAlns, gaplessAlns,
 	       queryNum, strand, querySeq, Phase::final );
+  if( gappedAlns.size() == 0 ) return;
+
+  if (args.maskLowercase == 2) {
+    makeQualityPssm(aligner, queryNum, strand, querySeq, true);
+    eraseWeakAlignments(aligner, gappedAlns, queryNum, strand, querySeq);
+    LOG2("lowercase-filtered alignments=" << gappedAlns.size());
+    if (gappedAlns.size() == 0) return;
+    if (args.outputType > 3)
+      makeQualityPssm(aligner, queryNum, strand, querySeq, false);
+  }
 
   if( args.outputType > 2 ){  // we want non-redundant alignments
     gappedAlns.eraseSuboptimal();
-    LOG( "nonredundant gapped alignments=" << gappedAlns.size() );
+    LOG2( "nonredundant gapped alignments=" << gappedAlns.size() );
   }
 
   if( !isCollatedAlignments() ) gappedAlns.sort();  // sort by score
@@ -858,17 +931,14 @@ void translateAndScan( LastAligner& aligner, size_t queryNum, char strand ){
   size_t size = query.padLen(queryNum);
 
   if( args.isTranslated() ){
-    LOG( "translating..." );
     modifiedQuery.resize( size );
     geneticCode.translate( querySeq, querySeq + size, &modifiedQuery[0] );
     if( args.tantanSetting ){
-      LOG( "masking..." );
       tantanMaskTranslatedQuery( queryNum, &modifiedQuery[0] );
     }
     querySeq = &modifiedQuery[0];
   }else{
     if( args.tantanSetting ){
-      LOG( "masking..." );
       modifiedQuery.assign( querySeq, querySeq + size );
       tantanMaskOneQuery( queryNum, &modifiedQuery[0] );
       querySeq = &modifiedQuery[0];
@@ -895,7 +965,6 @@ static void reverseComplementPssm( size_t queryNum ){
 }
 
 static void reverseComplementQuery( size_t queryNum ){
-  LOG( "reverse complementing..." );
   size_t b = query.seqBeg(queryNum);
   size_t e = query.seqEnd(queryNum);
   queryAlph.rc( query.seqWriter() + b, query.seqWriter() + e );
@@ -922,25 +991,13 @@ static void alignOneQuery(LastAligner &aligner,
     translateAndScan(aligner, queryNum, '-');
 }
 
-static size_t firstQuerySequenceInChunk(size_t chunkNum) {
-  size_t numOfQueries = query.finishedSequences();
-  size_t numOfChunks = aligners.size();
-  size_t beg = query.seqBeg(0);
-  size_t end = query.padEnd(numOfQueries - 1) - 1;
-  countT len = end - beg;  // try to avoid overflow
-  size_t pos = beg + len * chunkNum / numOfChunks;
-  size_t seqNum = query.whichSequence(pos);
-  size_t begDistance = pos - query.seqBeg(seqNum);
-  size_t endDistance = query.padEnd(seqNum) - pos;
-  return (begDistance < endDistance) ? seqNum : seqNum + 1;
-}
-
 static void alignSomeQueries(size_t chunkNum,
 			     unsigned volume, unsigned volumeCount) {
+  size_t numOfChunks = aligners.size();
   LastAligner &aligner = aligners[chunkNum];
   std::vector<AlignmentText> &textAlns = aligner.textAlns;
-  size_t beg = firstQuerySequenceInChunk(chunkNum);
-  size_t end = firstQuerySequenceInChunk(chunkNum + 1);
+  size_t beg = firstSequenceInChunk(query, numOfChunks, chunkNum);
+  size_t end = firstSequenceInChunk(query, numOfChunks, chunkNum + 1);
   bool isMultiVolume = (volumeCount > 1);
   bool isFirstVolume = (volume == 0);
   bool isFinalVolume = (volume + 1 == volumeCount);
@@ -975,22 +1032,6 @@ static void scanOneVolume(unsigned volume, unsigned volumeCount) {
   for (size_t i = 1; i < numOfChunks; ++i)
     threads[i - 1].join();
 #endif
-}
-
-static unsigned decideNumOfThreads() {
-#ifdef HAS_CXX_THREADS
-  if (args.numOfThreads) return args.numOfThreads;
-  unsigned x = std::thread::hardware_concurrency();
-  if (x) {
-    LOG("threads=" << x);
-    return x;
-  }
-  warn("can't determine how many threads to use: falling back to 1 thread");
-#else
-  if (args.numOfThreads != 1)
-    ERR("I was installed here with multi-threading disabled");
-#endif
-  return 1;
 }
 
 void readIndex( const std::string& baseName, indexT seqCount ) {
@@ -1034,7 +1075,6 @@ void scanAllVolumes( unsigned volumes, std::ostream& out ){
 
   if( args.outputType == 0 ) writeCounts( out );
   printAndClearAll();
-  LOG( "query batch done!" );
 }
 
 void writeHeader( countT refSequences, countT refLetters, std::ostream& out ){
@@ -1123,12 +1163,14 @@ void lastal( int argc, char** argv ){
   args.resetCumulativeOptions();  // because we will do fromArgs again
 
   unsigned volumes = unsigned(-1);
-  indexT minSeedLimit = 0;
+  size_t refMinimizerWindow = 1;  // assume this value, if not specified
+  size_t minSeedLimit = 0;
   countT refSequences = -1;
   countT refLetters = -1;
   bool isKeepRefLowercase = true;
   int refTantanSetting = 0;
-  readOuterPrj( args.lastdbName + ".prj", volumes, minSeedLimit,
+  readOuterPrj( args.lastdbName + ".prj", volumes,
+		refMinimizerWindow, minSeedLimit,
 		isKeepRefLowercase, refTantanSetting,
 		refSequences, refLetters );
   bool isDna = (alph.letters == alph.dna);
@@ -1156,12 +1198,13 @@ void lastal( int argc, char** argv ){
       ERR( "can't use option -l > 1: need to re-run lastdb with i <= 1" );
   }
 
-  aligners.resize( decideNumOfThreads() );
+  aligners.resize( decideNumberOfThreads( args.numOfThreads,
+					  args.programName, args.verbosity ) );
   bool isMultiVolume = (volumes+1 > 0 && volumes > 1);
   args.setDefaultsFromAlphabet( isDna, isProtein, refLetters,
 				isKeepRefLowercase, refTantanSetting,
                                 isCaseSensitiveSeeds, isMultiVolume,
-				aligners.size() );
+				refMinimizerWindow, aligners.size() );
   if( args.tantanSetting )
     tantanMasker.init( isProtein, args.tantanSetting > 1,
 		       alph.letters, alph.encode );
@@ -1239,11 +1282,11 @@ try{
   return EXIT_SUCCESS;
 }
 catch( const std::bad_alloc& e ) {  // bad_alloc::what() may be unfriendly
-  std::cerr << "lastal: out of memory\n";
+  std::cerr << argv[0] << ": out of memory\n";
   return EXIT_FAILURE;
 }
 catch( const std::exception& e ) {
-  std::cerr << "lastal: " << e.what() << '\n';
+  std::cerr << argv[0] << ": " << e.what() << '\n';
   return EXIT_FAILURE;
 }
 catch( int i ) {

@@ -33,7 +33,7 @@ void QualityPssmMaker::init(const ScoreMatrixRow *scoreMatrix,
   double mismatchExp = std::exp(lambda * mismatchScore);
 
   for (int q = 0; q < qualityCapacity; ++q) {
-    double e = qualityUncertainty(q, qualityOffset, false, 0);
+    double e = errorProbFromQual(q, qualityOffset, false);
     double p = 1 - e;
     qualityToProbCorrect[q] = p;
 

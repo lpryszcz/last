@@ -15,8 +15,8 @@ Typical usage
 
 These commands map DNA reads to the human genome::
 
-  lastdb -uNEAR hu human/chr*.fa
-  lastal -Q1 -e120 hu reads.fastq | last-map-probs > myalns.maf
+  lastdb -uNEAR -R01 hu human/chr*.fa
+  lastal -Q1 -D1000 hu reads.fastq | last-map-probs > myalns.maf
 
 Options
 -------
@@ -54,7 +54,7 @@ Using multiple CPUs
 
 This will run the pipeline on all your CPU cores::
 
-  parallel-fastq "lastal -Q1 -e120 hu | last-map-probs" < reads.fastq > myalns.maf
+  parallel-fastq "lastal -Q1 -D1000 hu | last-map-probs" < reads.fastq > myalns.maf
 
 It requires GNU parallel to be installed
 (http://www.gnu.org/software/parallel/).

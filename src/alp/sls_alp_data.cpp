@@ -27,7 +27,7 @@
 
 File name: sls_alp_data.cpp
 
-Author: Sergey Sheetlin
+Author: Sergey Sheetlin, Martin Frith
 
 Contents: Input data for the ascending ladder points simulation
 
@@ -228,23 +228,7 @@ bool insertions_after_deletions_)//if true, then insertions after deletions are 
 
 		if(!d_rand_flag&&rand_<0)
 		{
-			
-			rand_=(long int)time(NULL);
-			#ifndef _MSC_VER //UNIX program
-				struct timeval tv;
-				struct timezone tz;
-				gettimeofday(&tv, &tz);
-				rand_+=tv.tv_usec*10000000;
-			#else
-				struct _timeb timebuffer;
-				char *timeline;
-				_ftime( &timebuffer );
-				timeline = ctime( & ( timebuffer.time ) );
-				rand_+=timebuffer.millitm*10000000;
-			#endif
-
-			rand_=abs(rand_);
-
+			rand_=sls_basic::random_seed_from_time();
 			d_rand_flag=false;
 			
 		};

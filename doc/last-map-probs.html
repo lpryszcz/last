@@ -329,8 +329,8 @@ probability &gt; 0.01.</p>
 <h2>Typical usage</h2>
 <p>These commands map DNA reads to the human genome:</p>
 <pre class="literal-block">
-lastdb -uNEAR hu human/chr*.fa
-lastal -Q1 -e120 hu reads.fastq | last-map-probs &gt; myalns.maf
+lastdb -uNEAR -R01 hu human/chr*.fa
+lastal -Q1 -D1000 hu reads.fastq | last-map-probs &gt; myalns.maf
 </pre>
 </div>
 <div class="section" id="options">
@@ -378,7 +378,7 @@ need too much memory.</p>
 <h2>Using multiple CPUs</h2>
 <p>This will run the pipeline on all your CPU cores:</p>
 <pre class="literal-block">
-parallel-fastq &quot;lastal -Q1 -e120 hu | last-map-probs&quot; &lt; reads.fastq &gt; myalns.maf
+parallel-fastq &quot;lastal -Q1 -D1000 hu | last-map-probs&quot; &lt; reads.fastq &gt; myalns.maf
 </pre>
 <p>It requires GNU parallel to be installed
 (<a class="reference external" href="http://www.gnu.org/software/parallel/">http://www.gnu.org/software/parallel/</a>).</p>

@@ -1,6 +1,15 @@
 Aligning bisulfite-converted DNA reads to a genome
 ==================================================
 
+The easy way
+------------
+
+Use `Bisulfighter <http://epigenome.cbrc.jp/bisulfighter>`_, which
+wraps LAST.
+
+The hard way
+------------
+
 Bisulfite is used to detect methylated cytosines.  It converts
 unmethylated Cs to Ts, but it leaves methylated Cs intact.  If we then
 sequence the DNA and align it to a reference genome, we can infer
@@ -44,7 +53,7 @@ You can parallelize it like this::
   parallel-fastq "last-bisulfite.sh my_f my_r" < reads.fastq > results.maf
 
 Tips
-----
+~~~~
 
 * To go faster, try gapless alignment (add -j1 to the lastal options).
   Often, this is only minusculely less accurate than gapped alignment.
@@ -55,7 +64,7 @@ Tips
     ln -f my_f.tis my_r.tis
 
 Paired-end DNA reads
---------------------
+~~~~~~~~~~~~~~~~~~~~
 
 You can align paired-end reads by combining the preceding recipe with
 the one in `<last-pair-probs.html>`_.  This gets a bit complicated, so

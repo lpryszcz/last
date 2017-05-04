@@ -62,6 +62,11 @@ public:
 
   void clear() { subsetLists.clear(); subsetMaps.clear(); }
 
+  void swap( CyclicSubsetSeed& x ){
+    subsetLists.swap( x.subsetLists );
+    subsetMaps.swap( x.subsetMaps );
+  }
+
   // Seed letters are case-sensitive.
   void init( const std::vector< std::string >& seedAlphabet,
 	     const std::string& pattern,

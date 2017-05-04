@@ -42,9 +42,9 @@ void OneQualityScoreMatrix::init(const ScoreMatrixRow *scoreMatrix,
 
       for (int q2 = 0; q2 < qualityCapacity; ++q2) {
         if (isUseQuality) {
-          double p2 = letterProbs2[unmasked2];
-          double u2 = qualityUncertainty(q2, qualityOffset, isPhred, p2);
-          score = qualityPairScore(expScore, 0, u2, lambda);
+	  double e2 = errorProbFromQual(q2, qualityOffset, isPhred);
+          double c2 = qualityCertainty(e2, letterProbs2[unmasked2]);
+          score = qualityPairScore(expScore, 1, c2, lambda);
         }
 
         if (isMask) score = std::min(score, 0);

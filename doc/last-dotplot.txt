@@ -27,10 +27,10 @@ sequences with names like "chrUn_random522" like this::
 
   last-dotplot -1 'chr[!U]*' -2 'chr[!U]*' alns alns.png
 
-Option "-1" selects sequences from the 1st genome, and "-2" selects
-sequences from the 2nd genome.  'chr[!U]*' is a *pattern* that
-specifies names starting with "chr", followed by any character except
-U, followed by anything.
+Option "-1" selects sequences from the 1st (horizontal) genome, and
+"-2" selects sequences from the 2nd (vertical) genome.  'chr[!U]*' is
+a *pattern* that specifies names starting with "chr", followed by any
+character except U, followed by anything.
 
 ==========  =============================
 Pattern     Meaning
@@ -49,35 +49,63 @@ names starting in "chr" followed by one or two characters::
 
   last-dotplot -1 'chr?' -1 'chr??' alns alns.png
 
+You can also specify a sequence range; for example this gets the first
+1000 bases of chr9::
+
+  last-dotplot -1 chr9:0-1000 alns alns.png
+
 Options
 -------
 
   -h, --help
       Show a help message, with default option values, and exit.
-
   -1 PATTERN, --seq1=PATTERN
-      Which sequences to show from the 1st genome.
-
+      Which sequences to show from the 1st (horizontal) genome.
   -2 PATTERN, --seq2=PATTERN
-      Which sequences to show from the 2nd genome.
-
+      Which sequences to show from the 2nd (vertical) genome.
   -x WIDTH, --width=WIDTH
       Maximum width in pixels.
-
   -y HEIGHT, --height=HEIGHT
       Maximum height in pixels.
+  -c COLOR, --forwardcolor=COLOR
+      Color for forward alignments.
+  -r COLOR, --reversecolor=COLOR
+      Color for reverse alignments.
+  --sort1=N
+      Put the 1st genome's sequences left-to-right in order of: their
+      appearance in the input (0), their names (1), their lengths (2).
+  --sort2=N
+      Put the 2nd genome's sequences top-to-bottom in order of: their
+      appearance in the input (0), their names (1), their lengths (2).
+  --trim1
+      Trim unaligned sequence flanks from the 1st (horizontal) genome.
+  --trim2
+      Trim unaligned sequence flanks from the 2nd (vertical) genome.
+  --border-pixels=INT
+      Number of pixels between sequences.
+  --border-color=COLOR
+      Color for pixels between sequences.
+  --bed1=FILE
+      Read `BED-format
+      <https://genome.ucsc.edu/FAQ/FAQformat.html#format1>`_
+      annotations for the 1st genome.  They are drawn as rectangles,
+      with coordinates given by the first three BED fields.  The color
+      is specified by the RGB field if present, else pale red if the
+      strand is "+", pale blue if "-", or pale purple.
+  --bed2=FILE
+      Read BED-format annotations for the 2nd genome.
+
+Text options
+~~~~~~~~~~~~
 
   -f FILE, --fontfile=FILE
       TrueType or OpenType font file.
-
   -s SIZE, --fontsize=SIZE
       TrueType or OpenType font size.
-
-  -c COLOR, --forwardcolor=COLOR
-      Color for forward alignments.
-
-  -r COLOR, --reversecolor=COLOR
-      Color for reverse alignments.
+  --lengths1
+      Show sequence lengths for the 1st (horizontal) genome.
+  --lengths2
+      Show sequence lengths for the 2nd (vertical) genome.
 
 Unsequenced gap options
 ~~~~~~~~~~~~~~~~~~~~~~~

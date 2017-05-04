@@ -364,11 +364,11 @@ parallel-fasta &quot;lastal mydb&quot; &lt; queries.fa &gt; myalns.maf
 </pre>
 <p>Instead of this:</p>
 <pre class="literal-block">
-lastal -Q1 -e120 db q.fastq | last-split &gt; out.maf
+lastal -Q1 -D100 db q.fastq | last-split &gt; out.maf
 </pre>
 <p>try this:</p>
 <pre class="literal-block">
-parallel-fastq &quot;lastal -Q1 -e120 db | last-split&quot; &lt; q.fastq &gt; out.maf
+parallel-fastq &quot;lastal -Q1 -D100 db | last-split&quot; &lt; q.fastq &gt; out.maf
 </pre>
 <p>Instead of this:</p>
 <pre class="literal-block">

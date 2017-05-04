@@ -27,7 +27,7 @@
 
 File name: sls_repwords.cpp
 
-Author: Sergey Sheetlin
+Author: Sergey Sheetlin, Martin Frith
 
 Contents: Frameshift alignment algorithms 
 
@@ -181,22 +181,7 @@ long int seq_number_)//number of tested alignments
 
 		if(random_factor<0)
 		{
-			random_factor=(long int)time(NULL);
-			#ifndef _MSC_VER //UNIX program
-				struct timeval tv;
-				struct timezone tz;
-				gettimeofday(&tv, &tz);
-				random_factor+=tv.tv_usec*10000000;
-			#else
-				struct _timeb timebuffer;
-				char *timeline;
-				_ftime( &timebuffer );
-				timeline = ctime( & ( timebuffer.time ) );
-				rand_+=timebuffer.millitm*10000000;
-			#endif
-
-			random_factor=abs(random_factor);
-
+			random_factor=sls_basic::random_seed_from_time();
 			d_rand_flag=false;
 
 		};

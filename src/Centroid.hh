@@ -7,7 +7,6 @@
 #include "GeneralizedAffineGapCosts.hh"
 #include "SegmentPair.hh"
 #include "OneQualityScoreMatrix.hh"
-#include <cassert>
 #include <stddef.h>  // size_t
 #include <vector>
 #include <iostream> // for debug
@@ -65,10 +64,15 @@ namespace cbrc{
     double dp_ama( double gamma );
     void traceback_ama( std::vector< SegmentPair >& chunks, double gamma ) const;
 
-    // Added by MCF: get the probability of each column in the alignment:
-    void getColumnAmbiguities( std::vector< uchar >& ambiguityCodes,
-                               const std::vector< SegmentPair >& chunks,
-                               bool isForward );
+    void getMatchAmbiguities(std::vector<uchar>& ambiguityCodes,
+			     size_t seq1end, size_t seq2end,
+			     size_t length) const;
+
+    void getDeleteAmbiguities(std::vector<uchar>& ambiguityCodes,
+			      size_t seq1end, size_t seq1beg) const;
+
+    void getInsertAmbiguities(std::vector<uchar>& ambiguityCodes,
+			      size_t seq2end, size_t seq2beg) const;
 
     double logPartitionFunction() const;  // a.k.a. full score, forward score
 
@@ -102,8 +106,6 @@ namespace cbrc{
     dvec_t bI; // b^I(i,j)
     dvec_t bP; // b^P(i,j)
 
-    dvec_t pp; // posterior match probabilities
-
     dvec_t mD;
     dvec_t mI;
     dvec_t mX1;
@@ -123,30 +125,10 @@ namespace cbrc{
 
     void updateScore( double score, size_t antiDiagonal, size_t cur );
 
-    // get DP matrix value at the given position
-    double cellx( const dvec_t& matrix,
-                  size_t antiDiagonal, size_t seq1pos ) const{
-      return matrix[ xa.scoreEndIndex( antiDiagonal ) + seq1pos - xa.seq1start( antiDiagonal ) ];
-    }
-
-    // get DP matrix value "left of" the given position
-    double horix( const dvec_t& matrix,
-                  size_t antiDiagonal, size_t seq1pos ) const{
-      assert( antiDiagonal > 0 );
-      return cellx( matrix, antiDiagonal-1, seq1pos );
-    }
-
-    // get DP matrix value "above" the given position
-    double vertx( const dvec_t& matrix,
-                  size_t antiDiagonal, size_t seq1pos ) const{
-      assert( antiDiagonal > 0 );
-      return cellx( matrix, antiDiagonal-1, seq1pos+1 );
-    }
-
-    // get DP matrix value "diagonal from" the given position
-    double diagx( const dvec_t& matrix,
-                  size_t antiDiagonal, size_t seq1pos ) const{
-      return cellx( matrix, antiDiagonal-2, seq1pos );
+    // start of the x-drop region (i.e. number of skipped seq1 letters
+    // before the x-drop region) for this antidiagonal
+    size_t seq1start( size_t antidiagonal ) const {
+      return xa.scoreEndIndex( antidiagonal ) - xa.scoreOrigin( antidiagonal );
     }
 
     // get a pointer into a sequence, taking start and direction into account
@@ -157,5 +139,6 @@ namespace cbrc{
     }
   };
 
-}  // end namespace cbrc
-#endif  // CENTROID_HH
+}
+
+#endif

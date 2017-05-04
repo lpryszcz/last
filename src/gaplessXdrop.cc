@@ -76,6 +76,46 @@ bool isOptimalGaplessXdrop(const uchar *seq1,
   return true;
 }
 
+int gaplessXdropOverlap(const uchar *seq1,
+			const uchar *seq2,
+			const ScoreMatrixRow *scorer,
+			int maxScoreDrop,
+			size_t &reverseLength,
+			size_t &forwardLength) {
+  int minScore = 0;
+  int maxScore = 0;
+  int score = 0;
+
+  const uchar *r1 = seq1;
+  const uchar *r2 = seq2;
+  while (true) {
+    --r1;  --r2;
+    int s = scorer[*r1][*r2];
+    if (s <= -INF) break;
+    score += s;
+    if (score > maxScore) maxScore = score;
+    else if (score < maxScore - maxScoreDrop) return -INF;
+    else if (score < minScore) minScore = score;
+  }
+
+  maxScore = score - minScore;
+
+  const uchar *f1 = seq1;
+  const uchar *f2 = seq2;
+  while (true) {
+    int s = scorer[*f1][*f2];
+    if (s <= -INF) break;
+    score += s;
+    if (score > maxScore) maxScore = score;
+    else if (score < maxScore - maxScoreDrop) return -INF;
+    ++f1;  ++f2;
+  }
+
+  reverseLength = seq1 - (r1 + 1);
+  forwardLength = f1 - seq1;
+  return score;
+}
+
 int gaplessAlignmentScore(const uchar *seq1,
                           const uchar *seq1end,
                           const uchar *seq2,

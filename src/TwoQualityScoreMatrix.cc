@@ -7,6 +7,7 @@
 #include <algorithm>  // min
 #include <cassert>
 #include <cmath>
+//#include <iostream>  // for debugging
 
 namespace cbrc {
 
@@ -50,43 +51,102 @@ void TwoQualityScoreMatrix::init(const ScoreMatrixRow *scoreMatrix,
                                  bool isPhred2,
                                  int qualityOffset2,
                                  const uchar *toUnmasked,
-                                 bool isApplyMasking) {
+                                 bool isMask,
+				 bool isMatchMismatchMatrix) {
+  typedef TwoQualityMatrixIndexer Indexer;
+
   indexer.init(toUnmasked);
-  data.resize(indexer.numSymbols * indexer.numSymbols);
+  data.resize(Indexer::numSymbols * Indexer::numSymbols);
 
-  for (int letter1 = 0; letter1 < scoreMatrixRowSize; ++letter1) {
-    for (int letter2 = 0; letter2 < scoreMatrixRowSize; ++letter2) {
-      int unmasked1 = toUnmasked[letter1];
-      int unmasked2 = toUnmasked[letter2];
+  double expMat[Indexer::numNormalLetters][Indexer::numNormalLetters];
 
-      bool isMasked = (unmasked1 != letter1 || unmasked2 != letter2);
-      bool isMask = (isApplyMasking && isMasked);
+  for (int x1 = 0; x1 < Indexer::numNormalLetters; ++x1)
+    for (int x2 = 0; x2 < Indexer::numNormalLetters; ++x2)
+      expMat[x1][x2] = std::exp(lambda * scoreMatrix[x1][x2]);
 
-      bool isNormal1 = (unmasked1 < indexer.numNormalLetters);
-      bool isNormal2 = (unmasked2 < indexer.numNormalLetters);
-      bool isUseQuality = (isNormal1 && isNormal2);
+  double certainties1[Indexer::qualityCapacity][Indexer::numNormalLetters];
+  double certainties2[Indexer::qualityCapacity][Indexer::numNormalLetters];
+
+  for (int q = Indexer::minQuality; q < Indexer::qualityCapacity; ++q) {
+    double e1 = errorProbFromQual(q, qualityOffset1, isPhred1);
+    double e2 = errorProbFromQual(q, qualityOffset2, isPhred2);
+    for (int x = 0; x < Indexer::numNormalLetters; ++x) {
+      certainties1[q][x] = qualityCertainty(e1, letterProbs1[x]);
+      certainties2[q][x] = qualityCertainty(e2, letterProbs2[x]);
+    }
+  }
+
+  // I tried pre-calculating 1/lambda, but there was little speed boost.
+
+  for (int q1 = Indexer::minQuality; q1 < Indexer::qualityCapacity; ++q1) {
+    int *dq1 = &data[q1 * Indexer::numQualityLetters * Indexer::numSymbols];
+    const double *c1s = certainties1[q1];
+    for (int q2 = Indexer::minQuality; q2 < Indexer::qualityCapacity; ++q2) {
+      int *dq2 = dq1 + q2 * Indexer::numQualityLetters;
+      const double *c2s = certainties2[q2];
+      if (isMatchMismatchMatrix) {  // do this common special case faster
+	int scoreSame = qualityPairScore(expMat[0][0], c1s[0], c2s[0], lambda);
+	int scoreDiff = qualityPairScore(expMat[0][1], c1s[0], c2s[0], lambda);
+	int scoreSameMask = isMask ? std::min(scoreSame, 0) : scoreSame;
+	int scoreDiffMask = isMask ? std::min(scoreDiff, 0) : scoreDiff;
+	for (int x1 = 0; x1 < Indexer::numNormalLetters; ++x1) {
+	  int *dx1 = dq2 + x1 * Indexer::numSymbols;
+	  int *dm1 = dx1 + Indexer::numNormalLetters * Indexer::numSymbols;
+	  for (int x2 = 0; x2 < Indexer::numNormalLetters; ++x2) {
+	    int m2 = x2 + Indexer::numNormalLetters;
+	    if (x2 == x1) {
+	      dx1[x2] = scoreSame;
+	      dx1[m2] = scoreSameMask;
+	      dm1[x2] = scoreSameMask;
+	      dm1[m2] = scoreSameMask;
+	    } else {
+	      dx1[x2] = scoreDiff;
+	      dx1[m2] = scoreDiffMask;
+	      dm1[x2] = scoreDiffMask;
+	      dm1[m2] = scoreDiffMask;
+	    }
+	  }
+	}
+      } else {
+	for (int x1 = 0; x1 < Indexer::numNormalLetters; ++x1) {
+	  int *dx1 = dq2 + x1 * Indexer::numSymbols;
+	  int *dm1 = dx1 + Indexer::numNormalLetters * Indexer::numSymbols;
+	  double c1 = c1s[x1];
+	  for (int x2 = 0; x2 < Indexer::numNormalLetters; ++x2) {
+	    int m2 = x2 + Indexer::numNormalLetters;
+	    double c2 = c2s[x2];
+	    int score = qualityPairScore(expMat[x1][x2], c1, c2, lambda);
+	    dx1[x2] = score;
+	    if (isMask) score = std::min(score, 0);
+	    dx1[m2] = score;
+	    dm1[x2] = score;
+	    dm1[m2] = score;
+	  }
+	}
+      }
+    }
+  }
+
+  for (int x1 = 0; x1 < scoreMatrixRowSize; ++x1) {
+    for (int x2 = 0; x2 < scoreMatrixRowSize; ++x2) {
+      int unmasked1 = toUnmasked[x1];
+      int unmasked2 = toUnmasked[x2];
+
+      bool isQuality1 = (unmasked1 < Indexer::numNormalLetters);
+      bool isQuality2 = (unmasked2 < Indexer::numNormalLetters);
+      if (isQuality1 && isQuality2) continue;
+
+      bool isMasked = (unmasked1 != x1 || unmasked2 != x2);
 
       int score = scoreMatrix[unmasked1][unmasked2];
-      double expScore = std::exp(lambda * score);
+      if (isMasked && isMask) score = std::min(score, 0);
 
-      int end1 = qualityEnd(indexer, letter1);
-      int end2 = qualityEnd(indexer, letter2);
+      int end1 = qualityEnd(indexer, x1);
+      int end2 = qualityEnd(indexer, x2);
 
-      for (int q1 = indexer.minQuality; q1 < end1; ++q1) {
-        for (int q2 = indexer.minQuality; q2 < end2; ++q2) {
-          if (isUseQuality) {
-            double p1 = letterProbs1[unmasked1];
-            double u1 = qualityUncertainty(q1, qualityOffset1, isPhred1, p1);
-            double p2 = letterProbs2[unmasked2];
-            double u2 = qualityUncertainty(q2, qualityOffset2, isPhred2, p2);
-            score = qualityPairScore(expScore, u1, u2, lambda);
-          }
-
-          if (isMask) score = std::min(score, 0);
-
-          data[indexer(letter1, letter2, q1, q2)] = score;
-        }
-      }
+      for (int q1 = Indexer::minQuality; q1 < end1; ++q1)
+        for (int q2 = Indexer::minQuality; q2 < end2; ++q2)
+          data[indexer(x1, x2, q1, q2)] = score;
     }
   }
 }

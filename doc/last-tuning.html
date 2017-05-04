@@ -318,8 +318,8 @@ table.field-list { border: thin solid green }
 <div class="document" id="last-performance-tuning">
 <h1 class="title">LAST Performance Tuning</h1>
 
-<p>This document tells you how to make LAST <strong>faster</strong>, at a cost in
-sensitivity or memory use, or <strong>more sensitive</strong>, at a cost in speed.</p>
+<p>This document tells you how to trade-off <strong>speed</strong>, <strong>sensitivity</strong>,
+and <strong>memory and disk usage</strong>.</p>
 <p>Ideally, the default settings would always work well.  Unfortunately,
 there is too great a variety of challenging alignment tasks, and the
 LAST developers lack experience with most of them.</p>
@@ -327,31 +327,61 @@ LAST developers lack experience with most of them.</p>
 It is wrong to say &quot;LAST is faster but less sensitive than method X&quot;,
 or &quot;slower but more sensitive than method Y&quot;, without varying the
 defaults.</p>
+<div class="section" id="sparsity-options">
+<h2>Sparsity options</h2>
+<p>It's advisable to use at most one sparsity option: combining them will
+likely give poor sensitivity.</p>
+<div class="section" id="lastal-k">
+<h3>lastal -k</h3>
+<p>By default lastal looks for initial matches starting at every position
+in the query sequence(s), but -k2 makes it check every 2nd position,
+-k3 every 3rd position, etc.  Compared to the other sparsity options,
+this <strong>increases speed</strong> the most while <strong>reducing sensitivity</strong> the
+least.</p>
+</div>
 <div class="section" id="lastdb-w">
-<h2>lastdb -w</h2>
-<p>This option <strong>reduces memory and disk usage</strong>.  It makes lastdb and
-probably lastal <strong>faster</strong>.  By default lastdb indexes every position
-in the sequence(s), but -w2 makes it index every 2nd position, -w3
-every 3rd position, etc.  This may <strong>reduce sensitivity</strong>, but not
-necessarily, because LAST uses initial matches that are sufficiently
-rare, and by ignoring some matches the remaining ones become rarer.</p>
+<h3>lastdb -w</h3>
+<p>By default lastdb indexes every position in the reference sequence(s),
+but -w2 makes it index every 2nd position, -w3 every 3rd position,
+etc.  Compared to the other sparsity options, this <strong>decreases memory
+and disk use</strong> the most while reducing sensitivity the least.</p>
+<p>This has a complex effect on the speed and sensitivity of lastal.
+LAST uses initial matches that are sufficiently rare: this option
+makes it lose some matches (because those positions are not indexed),
+but gain others (because they are rarer).  In practice, small values
+of w (e.g. 2) sometimes make lastal slower and more sensitive, but
+very large values will eventually reduce sensitivity.</p>
 <p>Among other aligners, MegaBLAST indexes every 5th position, and BLAT
 indexes every 11th position.</p>
 </div>
-<div class="section" id="lastdb-i">
-<h2>lastdb -i</h2>
-<p>This option <strong>makes lastdb faster</strong>, but disables some lastal options.
-If lastdb is too slow, try -i10.</p>
+<div class="section" id="id1">
+<h3>lastdb -W</h3>
+<p>This makes LAST check for initial matches starting at only some
+positions, in both query and reference.  This <strong>decreases memory and
+disk use</strong>, and <strong>increases speed</strong> of lastdb and lastal, but
+<strong>reduces sensitivity</strong>.</p>
+<p>Specifically, this makes LAST look for initial matches starting only
+at positions that are &quot;minimum&quot; in any window of W consecutive
+positions.  &quot;Minimum&quot; means that the sequence starting here is
+alphabetically earliest.</p>
+<p>The fraction of positions that are &quot;minimum&quot; is roughly: 2 / (W + 1).</p>
 </div>
-<div class="section" id="lastdb-c">
-<h2>lastdb -C</h2>
-<p>This option may make lastal a bit <strong>faster</strong>, but <strong>uses more memory
-and disk</strong>, and makes lastdb slower.  If these downsides are no
-problem, you may as well try it.  -C3 is fastest (at least sometimes)
-but uses most memory, -C2 is almost as fast.</p>
 </div>
+<div class="section" id="lastdb8-lastal8">
+<h2>lastdb8 &amp; lastal8</h2>
+<p>If your reference has more than about 4 billion letters, 8-byte LAST
+<em>may</em> be beneficial.  Ordinary (4-byte) LAST cannot directly handle so
+much data, so it splits it into volumes, which is inefficient.  8-byte
+LAST can handle such data without voluming, but it uses more memory.</p>
+<p>8-byte LAST combines well with lastdb option -w or -W, which reduce
+memory usage.  Something like <tt class="docutils literal">lastdb8 <span class="pre">-W63</span></tt> enables rapid,
+huge-scale homology search, with moderate memory usage, but low
+sensitivity.</p>
+</div>
+<div class="section" id="other-options">
+<h2>Other options</h2>
 <div class="section" id="lastal-m">
-<h2>lastal -m</h2>
+<h3>lastal -m</h3>
 <p>This option <strong>trades speed for sensitivity</strong>.  It sets the rareness
 limit for initial matches: initial matches are lengthened until they
 occur at most this many times in the lastdb volume.  The default is
@@ -359,23 +389,22 @@ occur at most this many times in the lastdb volume.  The default is
 initial matches.</p>
 </div>
 <div class="section" id="lastal-l">
-<h2>lastal -l</h2>
+<h3>lastal -l</h3>
 <p>This option makes lastal <strong>faster</strong> but <strong>less sensitive</strong>.  It sets
 the minimum length of initial matches, e.g. -l50 means length 50.
 (The default is 1).  This can make it <em>much</em> faster, and the
 sensitivity is adequate if the alignments contain long, gapless,
 high-identity matches.</p>
 </div>
-<div class="section" id="lastal-k">
-<h2>lastal -k</h2>
-<p>This option makes lastal <strong>faster</strong> but <strong>less sensitive</strong>.  By
-default lastal looks for initial matches starting at every position in
-the query sequence(s), but -k2 makes it check every 2nd position, -k3
-every 3rd position, etc.  Be careful about combining this with lastdb
-option -w.</p>
+<div class="section" id="lastal-c">
+<h3>lastal -C</h3>
+<p>This option (gapless alignment culling) can make lastal <strong>faster</strong> but
+<strong>less sensitive</strong>.  It can also <strong>reduce redundant output</strong>.  For
+example, -C2 makes it discard alignments (before gapped extension)
+whose query coordinates lie in those of 2 or more stronger alignments.</p>
 </div>
 <div class="section" id="lastal-x">
-<h2>lastal -x</h2>
+<h3>lastal -x</h3>
 <p>This option can make lastal <strong>faster</strong> but <strong>less sensitive</strong>.  It
 sets the maximum score drop in alignments, in the gapped extension
 phase.  Lower values make it faster, by quitting unpromising
@@ -385,27 +414,39 @@ parameters and the database size.  You can see it in the lastal header
 after &quot;x=&quot;, e.g. by running lastal with no queries.  Then try, say,
 halving it.</p>
 </div>
-<div class="section" id="lastal-c">
-<h2>lastal -C</h2>
-<p>This option (gapless alignment culling) can make lastal <strong>faster</strong> but
-<strong>less sensitive</strong>.  It can also <strong>reduce redundant output</strong>.  For
-example, -C2 makes it discard alignments (before gapped extension)
-whose query coordinates lie in those of 2 or more stronger alignments.</p>
+<div class="section" id="id2">
+<h3>lastal -M</h3>
+<p>This option requests &quot;minimum-difference&quot; alignment, which is <strong>faster
+but cruder</strong> than standard gapped alignment.  This treats all matches
+the same, and minimizes the number of differences (mismatches plus
+gaps).</p>
 </div>
 <div class="section" id="lastal-j1">
-<h2>lastal -j1</h2>
-<p>This option requests <strong>gapless</strong> alignment, which is <strong>faster</strong>.  (You
-could get the same effect by using very high gap costs, but -j1 is
-faster because it skips the gapping phase entirely.)</p>
+<h3>lastal -j1</h3>
+<p>This option requests <strong>gapless</strong> alignment, which is even <strong>faster</strong>.
+(You could get the same effect by using very high gap costs, but -j1
+is faster because it skips the gapping phase entirely.)</p>
 </div>
 <div class="section" id="lastal-f">
-<h2>lastal -f</h2>
+<h3>lastal -f</h3>
 <p>Option -fTAB <strong>reduces the output size</strong>, which can improve speed.</p>
 </div>
+<div class="section" id="lastdb-i">
+<h3>lastdb -i</h3>
+<p>This option <strong>makes lastdb faster</strong>, but disables some lastal options.
+If lastdb is too slow, try -i10.</p>
+</div>
+<div class="section" id="lastdb-c2">
+<h3>lastdb -C2</h3>
+<p>This option may make lastal a bit <strong>faster</strong>, but <strong>uses more memory
+and disk</strong>, and makes lastdb slower.  If these downsides are no
+problem, you may as well try it.</p>
+</div>
 <div class="section" id="repeat-masking">
-<h2>Repeat masking</h2>
+<h3>Repeat masking</h3>
 <p>This can make LAST <strong>much faster</strong>, produce <strong>less output</strong>, and
 reduce memory and disk usage.  Please see <a class="reference external" href="last-repeats.html">last-repeats.html</a>.</p>
+</div>
 </div>
 </div>
 </body>

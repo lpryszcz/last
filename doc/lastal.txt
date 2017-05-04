@@ -20,35 +20,27 @@ You can also pipe query sequences into lastal, for example::
 Steps in lastal
 ---------------
 
-1) Find similar regions
+1) Find initial matches.  For each possible start position in the
+   query: find the shortest match with length ≥ l that *either* occurs
+   ≤ m times in the reference, *or* has length L.
 
-  a) Find initial matches.  For each possible start position in the
-     query: find the shortest match with length ≥ l that *either*
-     occurs ≤ m times in the reference, *or* has length L.
+2) Extend a gapless alignment from each initial match, and keep those
+   with score ≥ d.
 
-  b) Extend a gapless alignment from each initial match, and keep
-     those with score ≥ d.
+3) Define cores: find the longest run of identical matches in each
+   gapless alignment.
 
-  c) Define cores: find the longest run of identical matches in each
-     gapless alignment.
+4) Extend a gapped alignment from either side of each core, and keep
+   those with score ≥ e.
 
-  d) Extend a gapped alignment from either side of each core, and keep
-     those with score ≥ e.
+5) Non-redundantize the alignments: if several alignments share an
+   endpoint (same coordinates in both sequences), remove all but one
+   highest-scoring one.
 
-2) Align them
+6) Estimate the ambiguity of each aligned column (OFF by default).
 
-  e) "Final" alignments: extend gapped alignments again, but with
-     different masking and/or maximum score drop parameters.  This
-     step is performed only if u=2 or if z differs from x.
-
-  f) Non-redundantize the alignments: if several alignments share an
-     endpoint (same coordinates in both sequences), remove all but one
-     highest-scoring one.
-
-  g) Estimate the ambiguity of each aligned column (OFF by default).
-
-  h) Redo the alignments to minimize column ambiguity, using either
-     gamma-centroid or LAMA (OFF by default).
+7) Redo the alignments to minimize column ambiguity, using either
+   gamma-centroid or LAMA (OFF by default).
 
 Options
 -------
@@ -98,7 +90,8 @@ Cosmetic options
       reference start, reference end, E-value, bit score.  The start
       coordinates are one-based.  *Warning:* this is a lossy format,
       because it does not show gap positions.  *Warning:* the other
-      LAST programs cannot read this format.
+      LAST programs cannot read this format.  *Warning:* `"bit score"
+      is not the same as "score" <last-evalues.html>`_.
 
       **BlastTab+** format is the same as BlastTab, with 2 extra
       columns at the end: length of query sequence and length of
@@ -106,6 +99,19 @@ Cosmetic options
 
       For backwards compatibility, a NAME of 0 means TAB and 1 means
       MAF.
+
+E-value options
+~~~~~~~~~~~~~~~
+
+  -D LENGTH
+      Report alignments that are expected by chance at most once per
+      LENGTH query letters.  This option only affects the default
+      value of -E, so if you specify -E then -D has no effect.
+
+  -E THRESHOLD
+      Maximum EG2 (`expected alignments per square giga
+      <last-evalues.html>`_).  This option only affects the default
+      value of -e, so if you specify -e then -E has no effect.
 
 Score options
 ~~~~~~~~~~~~~
@@ -156,7 +162,9 @@ Score options
   -F COST
       Align DNA queries to protein reference sequences, using the
       specified frameshift cost.  A value of 15 seems to be
-      reasonable.  The output looks like this::
+      reasonable.  (As a special case, -F0 means DNA-versus-protein
+      alignment without frameshifts, which is faster.)  The output
+      looks like this::
 
         a score=108
         s prot 2  40 + 649 FLLQAVKLQDP-STPHQIVPSP-VSDLIATHTLCPRMKYQDD
@@ -181,7 +189,10 @@ Score options
       Maximum score drop for gapless alignments.
 
   -z DROP
-      Maximum score drop for final gapped alignments.
+      Maximum score drop for final gapped alignments.  Setting z
+      different from x causes lastal to extend gapless alignments
+      twice: first with a maximum score drop of x, and then with a
+      (presumably higher) maximum score drop of z.
 
   -d SCORE
       Minimum score for gapless alignments.
@@ -191,42 +202,8 @@ Score options
       option -j1, then -d and -e mean the same thing.  If you set
       both, -e will prevail.)
 
-E-value options
-~~~~~~~~~~~~~~~
-
-  -D LENGTH
-      Report alignments that are expected by chance at most once per
-      LENGTH query letters.  This option only affects the default
-      value of -E, so if you specify -E then -D has no effect.
-
-  -E THRESHOLD
-      Maximum EG2 (expected alignments per square giga).  This option
-      only affects the default value of -e, so if you specify -e then
-      -E has no effect.
-
-Miscellaneous options
+Initial-match options
 ~~~~~~~~~~~~~~~~~~~~~
-
-  -s STRAND
-      Specify which query strand should be used: 0 means reverse only,
-      1 means forward only, and 2 means both.
-
-  -S NUMBER
-      Specify which DNA strand the score matrix applies to.  This
-      matters only for unusual matrices that lack strand symmetry
-      (e.g. if the a:g score differs from the t:c score).  0 means
-      that the matrix applies to the forward strand of the reference
-      aligned to either strand of the query.  1 means that the matrix
-      applies to either strand of the reference aligned to the forward
-      strand of the query.
-
-  -T NUMBER
-      Type of alignment: 0 means "local alignment" and 1 means
-      "overlap alignment".  Local alignments can end anywhere in the
-      middle or at the ends of the sequences.  Overlap alignments must
-      extend to the left until they hit the end of a sequence (either
-      query or reference), and to the right until they hit the end of
-      a sequence.
 
   -m MULTIPLICITY
       Maximum multiplicity for initial matches.  Each initial match is
@@ -245,12 +222,38 @@ Miscellaneous options
   -L LENGTH
       Maximum length for initial matches.
 
-  -n COUNT
-      Maximum number of gapless alignments per query position.  When
-      lastal extends gapless alignments from initial matches that
-      start at one query position, if it gets COUNT successful
-      extensions, it skips any remaining initial matches starting at
-      that position.
+  -k STEP
+      Look for initial matches starting only at every STEP-th position
+      in each query (positions 0, STEP, 2×STEP, etc).  This makes
+      lastal faster but less sensitive.
+
+  -W SIZE
+      Look for initial matches starting only at query positions that
+      are "minimum" in any window of SIZE consecutive positions (see
+      `<lastdb.html>`_).  By default, this parameter takes the same
+      value as was used for lastdb -W.
+
+Miscellaneous options
+~~~~~~~~~~~~~~~~~~~~~
+
+  -s STRAND
+      Specify which query strand should be used: 0 means reverse only,
+      1 means forward only, and 2 means both.
+
+  -S NUMBER
+      Specify which DNA strand the score matrix applies to.  This
+      matters only for unusual matrices that lack strand symmetry
+      (e.g. if the a:g score differs from the t:c score).  0 means
+      that the matrix applies to the forward strand of the reference
+      aligned to either strand of the query.  1 means that the matrix
+      applies to either strand of the reference aligned to the forward
+      strand of the query.
+
+  -K LIMIT
+      Omit any alignment whose query range lies in LIMIT or more other
+      alignments with higher score (and on the same strand).  This is
+      a useful way to get just the top few hits to each part of each
+      query (P Berman et al. 2000, J Comput Biol 7:293-302).
 
   -C LIMIT
       Before extending gapped alignments, discard any gapless
@@ -259,15 +262,12 @@ Miscellaneous options
       can reduce run time and output size (MC Frith & R Kawaguchi
       2015, Genome Biol 16:106).
 
-  -K LIMIT
-      Omit any alignment whose query range lies in LIMIT or more other
-      alignments with higher score (and on the same strand).  This is
-      a useful way to get just the top few hits to each part of each
-      query (P Berman et al. 2000, J Comput Biol 7:293-302).
-
-  -k STEP
-      Look for initial matches starting only at every STEP-th position
-      in the query.  This makes lastal faster but less sensitive.
+  -P THREADS
+      Divide the work between this number of threads running in
+      parallel.  0 means use as many threads as your computer claims
+      it can handle simultaneously.  Single query sequences are not
+      divided between threads, so you need multiple queries per batch
+      for this option to take effect.
 
   -i BYTES
       Search queries in batches of at most this many bytes.  If a
@@ -279,12 +279,42 @@ Miscellaneous options
       If the reference was split into volumes by lastdb, then each
       volume will be read into memory once per query batch.
 
-  -P THREADS
-      Divide the work between this number of threads running in
-      parallel.  0 means use as many threads as your computer claims
-      it can handle simultaneously.  Single query sequences are not
-      divided between threads, so you need multiple queries per batch
-      for this option to take effect.
+  -M  Find minimum-difference alignments, which is faster but cruder.
+      This treats all matches the same, and minimizes the number of
+      differences (mismatches plus gaps).
+
+      * Any substitution score matrix will be ignored.  The
+        substitution scores are set by the match score (r) and the
+        mismatch cost (q).
+      * The gap cost parameters will be ignored.  The gap existence
+        cost will be 0 and the gap extension cost will be q + r/2.
+      * The match score (r) must be an even number.
+      * Any sequence quality data (e.g. fastq) will be ignored.
+
+  -T NUMBER
+      Type of alignment: 0 means "local alignment" and 1 means
+      "overlap alignment".  Local alignments can end anywhere in the
+      middle or at the ends of the sequences.  Overlap alignments must
+      extend to the left until they hit the end of a sequence (either
+      query or reference), and to the right until they hit the end of
+      a sequence.
+
+      **Warning:** it's often a bad idea to use -T1.  This setting
+      does not change the maximum score drop allowed inside
+      alignments, so if an alignment cannot be extended to the end of
+      a sequence without exceeding this drop, it will be discarded.
+
+  -n COUNT
+      Maximum number of gapless alignments per query position.  When
+      lastal extends gapless alignments from initial matches that
+      start at one query position, if it gets COUNT successful
+      extensions, it skips any remaining initial matches starting at
+      that position.
+
+  -N COUNT
+      Stop after finding COUNT alignments per query strand.  This
+      makes lastal faster: it quits gapless and gapped extensions as
+      soon as it finds COUNT alignments with score ≥ e.
 
   -R DIGITS
       Specify lowercase-marking of repeats, by two digits (e.g. "-R 01"),
@@ -307,12 +337,18 @@ Miscellaneous options
 
   -u NUMBER
       Specify treatment of lowercase letters when extending
-      alignments.  0 means do not mask them; 1 means mask them for
-      gapless extensions; 2 means mask them for gapless and gapped
-      extensions but not final extensions; 3 means mask them at all
-      stages.  "Mask" means change their match/mismatch scores to
-      min(unmasked score, 0).  This option does not affect treatment
-      of lowercase for initial matches.
+      alignments:
+
+      0. Mask them for neither gapless nor gapped extensions.
+      1. Mask them for gapless but not gapped extensions.
+      2. Mask them for gapless but not gapped extensions, and then
+         discard alignments that lack any segment with score ≥ e when
+         lowercase is masked.
+      3. Mask them for gapless and gapped extensions.
+
+      "Mask" means change their match/mismatch scores to min(unmasked
+      score, 0).  This option does not affect treatment of lowercase
+      for initial matches.
 
   -w DISTANCE
       This option is a kludge to avoid catastrophic time and memory
@@ -507,3 +543,10 @@ Therefore, with parallel processes, you should either ensure you have
 enough memory to hold several volumes simultaneously, or run lastal on
 one volume at a time.  An efficient scheme is to use a different
 computer for each volume.
+
+lastal8
+-------
+
+lastal8 has identical usage to lastal, and is used with `lastdb8
+<lastdb.html>`_.  lastal cannot read the output of lastdb8, and
+lastal8 cannot read the output of lastdb.

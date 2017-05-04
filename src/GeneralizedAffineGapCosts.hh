@@ -19,6 +19,8 @@
 #ifndef GENERALIZEDAFFINEGAPCOSTS_HH
 #define GENERALIZEDAFFINEGAPCOSTS_HH
 
+#include <algorithm>
+
 namespace cbrc{
 
 struct GeneralizedAffineGapCosts{
@@ -36,8 +38,9 @@ struct GeneralizedAffineGapCosts{
   { return insExist == delExist && insExtend == delExtend; }
 
   // Will standard affine gaps always suffice for maximal alignment scores?
-  bool isAffine() const
-  { return isSymmetric() && pairExtend >= delExist + 2 * delExtend; }
+  bool isAffine() const{
+    return pairExtend >= std::max(delExist, insExist) + delExtend + insExtend;
+  }
 
   // Return the score of a gap with the given sizes in a pair of
   // sequences, considering that it might be either one "generalized"

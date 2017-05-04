@@ -11,6 +11,16 @@
 #include <cstdlib>  // EXIT_SUCCESS, EXIT_FAILURE
 #include <iostream>
 
+static size_t defaultBytes(bool isSplicedAlignment) {
+  size_t b = isSplicedAlignment ? 8 : 8 * 1024;
+  for (int i = 0; i < 3; ++i) {
+    size_t n = b * 1024;
+    if (n / 1024 != b) return -1;
+    b = n;
+  }
+  return b;
+}
+
 static void run(int argc, char* argv[]) {
   LastSplitOptions opts;
 
@@ -22,6 +32,7 @@ static void run(int argc, char* argv[]) {
   opts.mismap = 0.01;
   opts.score = -1;
   opts.no_split = false;
+  opts.bytes = 0;
   opts.verbose = false;
   opts.isSplicedAlignment = false;
 
@@ -56,13 +67,14 @@ Options:\n\
     + cbrc::stringify(opts.sdev) + ")\n\
  -m, --mismap=PROB  maximum mismap probability (default="
     + cbrc::stringify(opts.mismap) + ")\n\
- -s, --score=INT    minimum alignment score (default=e OR e+t*ln[1000])\n\
+ -s, --score=INT    minimum alignment score (default=e OR e+t*ln[100])\n\
  -n, --no-split     write original, not split, alignments\n\
+ -b, --bytes=B      maximum memory (default=8T for split, 8G for spliced)\n\
  -v, --verbose      be verbose\n\
  -V, --version      show version information and exit\n\
 ";
 
-  const char sOpts[] = "hg:d:c:t:M:S:m:s:nvV";
+  const char sOpts[] = "hg:d:c:t:M:S:m:s:nb:vV";
 
   static struct option lOpts[] = {
     { "help",     no_argument,       0, 'h' },
@@ -75,6 +87,7 @@ Options:\n\
     { "mismap",   required_argument, 0, 'm' },
     { "score",    required_argument, 0, 's' },
     { "no-split", no_argument,       0, 'n' },
+    { "bytes",    required_argument, 0, 'b' },
     { "verbose",  no_argument,       0, 'v' },
     { "version",  no_argument,       0, 'V' },
     { 0, 0, 0, 0}
@@ -119,6 +132,9 @@ Options:\n\
     case 'n':
       opts.no_split = true;
       break;
+    case 'b':
+      cbrc::unstringifySize(opts.bytes, optarg);
+      break;
     case 'v':
       opts.verbose = true;
       break;
@@ -129,6 +145,8 @@ Options:\n\
       throw std::runtime_error("");
     }
   }
+
+  if (!opts.bytes) opts.bytes = defaultBytes(opts.isSplicedAlignment);
 
   opts.inputFileNames.assign(argv + optind, argv + argc);
 

@@ -16,22 +16,21 @@ int GappedXdropAligner::alignPssm(const uchar *seq,
                                   int gapUnalignedCost,
                                   int maxScoreDrop,
                                   int maxMatchScore) {
-  bool isAffine =
-    insExistenceCost == delExistenceCost &&
-    insExtensionCost == delExtensionCost &&
-    gapUnalignedCost >= delExistenceCost + 2 * delExtensionCost;
+  const bool isAffine = isAffineGaps(delExistenceCost, delExtensionCost,
+				     insExistenceCost, insExtensionCost,
+				     gapUnalignedCost);
 
   std::size_t maxSeq1begs[] = { 0, 9 };
   std::size_t minSeq1ends[] = { 1, 0 };
 
   int bestScore = 0;
   int bestEdgeScore = -INF;
-  std::size_t bestEdgeAntidiagonal = 2;
+  std::size_t bestEdgeAntidiagonal = 0;
   std::size_t bestEdgeSeq1position = 0;
 
   init();
 
-  for (std::size_t antidiagonal = 2; /* noop */; ++antidiagonal) {
+  for (std::size_t antidiagonal = 0; /* noop */; ++antidiagonal) {
     std::size_t seq1beg = std::min(maxSeq1begs[0], maxSeq1begs[1]);
     std::size_t seq1end = std::max(minSeq1ends[0], minSeq1ends[1]);
 
@@ -42,7 +41,7 @@ int GappedXdropAligner::alignPssm(const uchar *seq,
 
     initAntidiagonal(seq1beg, scoreEnd, numCells);
 
-    std::size_t seq2pos = antidiagonal - 2 - seq1beg;
+    std::size_t seq2pos = antidiagonal - seq1beg;
 
     const uchar *s1 = isForward ? seq + seq1beg : seq - seq1beg - 1;
     const ScoreMatrixRow *s2 = isForward ? pssm + seq2pos : pssm - seq2pos - 1;
@@ -78,14 +77,13 @@ int GappedXdropAligner::alignPssm(const uchar *seq,
         while (1) {
           int x = *x2;
           int y = *y1 - delExtensionCost;
-          int z = *z1 - delExtensionCost;
+          int z = *z1 - insExtensionCost;
           int b = maxValue(x, y, z);
           if (b >= minScore) {
             updateBest(bestScore, b, antidiagonal, x0, x0base);
             *x0 = b + (*s2)[*s1];
-            int g = b - delExistenceCost;
-            *y0 = maxValue(g, y);
-            *z0 = maxValue(g, z);
+            *y0 = maxValue(b - delExistenceCost, y);
+            *z0 = maxValue(b - insExistenceCost, z);
           }
           else *x0 = *y0 = *z0 = -INF;
           if (x0 == x0last) break;
@@ -95,14 +93,13 @@ int GappedXdropAligner::alignPssm(const uchar *seq,
         while (1) {
           int x = *x2;
           int y = *y1 - delExtensionCost;
-          int z = *z1 - delExtensionCost;
+          int z = *z1 - insExtensionCost;
           int b = maxValue(x, y, z);
           if (b >= minScore) {
             updateBest(bestScore, b, antidiagonal, x0, x0base);
             *x0 = b + (*s2)[*s1];
-            int g = b - delExistenceCost;
-            *y0 = maxValue(g, y);
-            *z0 = maxValue(g, z);
+            *y0 = maxValue(b - delExistenceCost, y);
+            *z0 = maxValue(b - insExistenceCost, z);
           }
           else *x0 = *y0 = *z0 = -INF;
           if (x0 == x0last) break;

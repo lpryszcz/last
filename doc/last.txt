@@ -43,6 +43,10 @@ multi-threading)::
 
   make CXXFLAGS=-O3
 
+Or you can specify another compiler like this::
+
+  make CXX=MyOtherCompiler
+
 Install (optional)
 ------------------
 

@@ -6,10 +6,12 @@
 #ifndef SEGMENT_PAIR_HH
 #define SEGMENT_PAIR_HH
 
+#include <stddef.h>
+
 namespace cbrc{
 
 struct SegmentPair{
-  typedef unsigned indexT;
+  typedef LAST_INT_TYPE indexT;
   typedef unsigned char uchar;
 
   SegmentPair(){}

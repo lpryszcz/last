@@ -33,18 +33,22 @@ LastdbArguments::LastdbArguments() :
   seedPatterns(0),
   volumeSize(-1),
   indexStep(1),
+  minimizerWindow(1),
+  numOfThreads(1),
   subsetSeedFile(""),
   userAlphabet(""),
   minSeedLimit(0),
-  bucketDepth(indexT(-1)),  // means: use the default (adapts to the data)
+  bucketDepth(-1),  // means: use the default (adapts to the data)
   childTableType(0),
   isCountsOnly(false),
   verbosity(0),
   inputFormat(sequenceFormat::fasta){}
 
 void LastdbArguments::fromArgs( int argc, char** argv, bool isOptionsOnly ){
+  programName = argv[0];
   std::string usage = "\
-Usage: lastdb [options] output-name fasta-sequence-file(s)\n\
+Usage: " + std::string(programName) +
+    " [options] output-name fasta-sequence-file(s)\n\
 Prepare sequences for subsequent alignment with lastal.\n\
 \n\
 Main Options:\n\
@@ -52,18 +56,22 @@ Main Options:\n\
 -p: interpret the sequences as proteins\n\
 -R: repeat-marking options (default="
     + stringify(isKeepLowercase) + stringify(tantanSetting) + ")\n\
--c: soft-mask lowercase letters";
+-c: soft-mask lowercase letters (in reference *and* query sequences)\n\
+-u: seeding scheme (default: YASS for DNA, else exact-match seeds)";
 
   std::string help = usage + "\n\
 \n\
 Advanced Options (default settings):\n\
+-w: use initial matches starting at every w-th position in each sequence ("
+    + stringify(indexStep) + ")\n\
+-W: use \"minimum\" positions in sliding windows of W consecutive positions ("
+    + stringify(minimizerWindow) + ")\n\
+-s: volume size (unlimited)\n\
 -Q: input format: 0=fasta, 1=fastq-sanger, 2=fastq-solexa, 3=fastq-illumina ("
       + stringify(inputFormat) + ")\n\
--s: volume size (unlimited)\n\
--m: seed pattern (non-DNA: 1)\n\
--u: seeding scheme (DNA: YASS)\n\
--w: index step ("
-    + stringify(indexStep) + ")\n\
+-P: number of parallel threads ("
+    + stringify(numOfThreads) + ")\n\
+-m: seed pattern\n\
 -a: user-defined alphabet\n\
 -i: minimum limit on initial matches per query position ("
     + stringify(minSeedLimit) + ")\n\
@@ -80,7 +88,7 @@ LAST home page: http://last.cbrc.jp/\n\
 
   optind = 1;  // allows us to scan arguments more than once(???)
   int c;
-  while( (c = myGetopt(argc, argv, "hVpR:cm:s:w:u:a:i:b:C:xvQ:")) != -1 ) {
+  while( (c = myGetopt(argc, argv, "hVpR:cm:s:w:W:P:u:a:i:b:C:xvQ:")) != -1 ) {
     switch(c){
     case 'h':
       std::cout << help;
@@ -112,6 +120,13 @@ LAST home page: http://last.cbrc.jp/\n\
     case 'w':
       unstringify( indexStep, optarg );
       if( indexStep < 1 ) badopt( c, optarg );
+      break;
+    case 'W':
+      unstringify( minimizerWindow, optarg );
+      if( minimizerWindow < 1 ) badopt( c, optarg );
+      break;
+    case 'P':
+      unstringify( numOfThreads, optarg );
       break;
     case 'u':
       subsetSeedFile = optarg;

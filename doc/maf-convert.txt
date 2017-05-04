@@ -32,6 +32,11 @@ Options
          nucleotides.  This affects psl format only (the first 4
          columns).
 
+  -j, --join=N
+         Join neighboring alignments if they are co-linear and
+         separated by at most N letters.  This affects psl format
+         only.
+
   -n, --noheader
          Omit any header lines from the output.  This may be useful if
          you concatenate outputs, e.g. from parallel jobs.

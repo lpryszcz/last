@@ -13,6 +13,7 @@
 #ifndef LAST_SPLIT_HH
 #define LAST_SPLIT_HH
 
+#include <stddef.h>  // size_t
 #include <string>
 #include <vector>
 
@@ -26,6 +27,7 @@ struct LastSplitOptions {
   double mismap;
   int score;
   bool no_split;
+  size_t bytes;
   bool verbose;
   bool isSplicedAlignment;
   std::vector<std::string> inputFileNames;

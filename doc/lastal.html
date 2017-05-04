@@ -336,35 +336,18 @@ zcat seqs.fasta.gz | lastal humanDb &gt; myalns.maf
 <div class="section" id="steps-in-lastal">
 <h2>Steps in lastal</h2>
 <ol class="arabic">
-<li><p class="first">Find similar regions</p>
-</li>
-</ol>
-<blockquote>
-<ol class="loweralpha">
 <li><p class="first">Find initial matches.  For each possible start position in the
-query: find the shortest match with length ≥ l that <em>either</em>
-occurs ≤ m times in the reference, <em>or</em> has length L.</p>
+query: find the shortest match with length ≥ l that <em>either</em> occurs
+≤ m times in the reference, <em>or</em> has length L.</p>
 </li>
-<li><p class="first">Extend a gapless alignment from each initial match, and keep
-those with score ≥ d.</p>
+<li><p class="first">Extend a gapless alignment from each initial match, and keep those
+with score ≥ d.</p>
 </li>
 <li><p class="first">Define cores: find the longest run of identical matches in each
 gapless alignment.</p>
 </li>
 <li><p class="first">Extend a gapped alignment from either side of each core, and keep
 those with score ≥ e.</p>
-</li>
-</ol>
-</blockquote>
-<ol class="arabic" start="2">
-<li><p class="first">Align them</p>
-</li>
-</ol>
-<blockquote>
-<ol class="loweralpha" start="5">
-<li><p class="first">&quot;Final&quot; alignments: extend gapped alignments again, but with
-different masking and/or maximum score drop parameters.  This
-step is performed only if u=2 or if z differs from x.</p>
 </li>
 <li><p class="first">Non-redundantize the alignments: if several alignments share an
 endpoint (same coordinates in both sequences), remove all but one
@@ -376,7 +359,6 @@ highest-scoring one.</p>
 gamma-centroid or LAMA (OFF by default).</p>
 </li>
 </ol>
-</blockquote>
 </div>
 <div class="section" id="options">
 <h2>Options</h2>
@@ -428,13 +410,34 @@ alignment length, mismatches, gap opens, query start, query end,
 reference start, reference end, E-value, bit score.  The start
 coordinates are one-based.  <em>Warning:</em> this is a lossy format,
 because it does not show gap positions.  <em>Warning:</em> the other
-LAST programs cannot read this format.</p>
+LAST programs cannot read this format.  <em>Warning:</em> <a class="reference external" href="last-evalues.html">&quot;bit score&quot;
+is not the same as &quot;score&quot;</a>.</p>
 <p><strong>BlastTab+</strong> format is the same as BlastTab, with 2 extra
 columns at the end: length of query sequence and length of
 reference sequence.  More columns might be added in future.</p>
 <p class="last">For backwards compatibility, a NAME of 0 means TAB and 1 means
 MAF.</p>
 </td></tr>
+</tbody>
+</table>
+</blockquote>
+</div>
+<div class="section" id="e-value-options">
+<h3>E-value options</h3>
+<blockquote>
+<table class="docutils option-list" frame="void" rules="none">
+<col class="option" />
+<col class="description" />
+<tbody valign="top">
+<tr><td class="option-group">
+<kbd><span class="option">-D <var>LENGTH</var></span></kbd></td>
+<td>Report alignments that are expected by chance at most once per
+LENGTH query letters.  This option only affects the default
+value of -E, so if you specify -E then -D has no effect.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-E <var>THRESHOLD</var></span></kbd></td>
+<td>Maximum EG2 (<a class="reference external" href="last-evalues.html">expected alignments per square giga</a>).  This option only affects the default
+value of -e, so if you specify -e then -E has no effect.</td></tr>
 </tbody>
 </table>
 </blockquote>
@@ -493,7 +496,9 @@ standard affine gaps.</td></tr>
 <kbd><span class="option">-F <var>COST</var></span></kbd></td>
 <td><p class="first">Align DNA queries to protein reference sequences, using the
 specified frameshift cost.  A value of 15 seems to be
-reasonable.  The output looks like this:</p>
+reasonable.  (As a special case, -F0 means DNA-versus-protein
+alignment without frameshifts, which is faster.)  The output
+looks like this:</p>
 <pre class="literal-block">
 a score=108
 s prot 2  40 + 649 FLLQAVKLQDP-STPHQIVPSP-VSDLIATHTLCPRMKYQDD
@@ -519,7 +524,10 @@ regions in alignments) and speed (the smaller the faster).</td></tr>
 <td>Maximum score drop for gapless alignments.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-z <var>DROP</var></span></kbd></td>
-<td>Maximum score drop for final gapped alignments.</td></tr>
+<td>Maximum score drop for final gapped alignments.  Setting z
+different from x causes lastal to extend gapless alignments
+twice: first with a maximum score drop of x, and then with a
+(presumably higher) maximum score drop of z.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-d <var>SCORE</var></span></kbd></td>
 <td>Minimum score for gapless alignments.</td></tr>
@@ -532,23 +540,41 @@ both, -e will prevail.)</td></tr>
 </table>
 </blockquote>
 </div>
-<div class="section" id="e-value-options">
-<h3>E-value options</h3>
+<div class="section" id="initial-match-options">
+<h3>Initial-match options</h3>
 <blockquote>
 <table class="docutils option-list" frame="void" rules="none">
 <col class="option" />
 <col class="description" />
 <tbody valign="top">
 <tr><td class="option-group">
-<kbd><span class="option">-D <var>LENGTH</var></span></kbd></td>
-<td>Report alignments that are expected by chance at most once per
-LENGTH query letters.  This option only affects the default
-value of -E, so if you specify -E then -D has no effect.</td></tr>
+<kbd><span class="option">-m <var>MULTIPLICITY</var></span></kbd></td>
+<td><p class="first">Maximum multiplicity for initial matches.  Each initial match is
+lengthened until it occurs at most this many times in the
+reference.</p>
+<p class="last">If the reference was split into volumes by lastdb, then lastal
+uses one volume at a time.  The maximum multiplicity then
+applies to each volume, not the whole reference.  This is why
+voluming changes the results.</p>
+</td></tr>
 <tr><td class="option-group">
-<kbd><span class="option">-E <var>THRESHOLD</var></span></kbd></td>
-<td>Maximum EG2 (expected alignments per square giga).  This option
-only affects the default value of -e, so if you specify -e then
--E has no effect.</td></tr>
+<kbd><span class="option">-l <var>LENGTH</var></span></kbd></td>
+<td>Minimum length for initial matches.  Length means the number of
+letters spanned by the match.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-L <var>LENGTH</var></span></kbd></td>
+<td>Maximum length for initial matches.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-k <var>STEP</var></span></kbd></td>
+<td>Look for initial matches starting only at every STEP-th position
+in each query (positions 0, STEP, 2×STEP, etc).  This makes
+lastal faster but less sensitive.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-W <var>SIZE</var></span></kbd></td>
+<td>Look for initial matches starting only at query positions that
+are &quot;minimum&quot; in any window of SIZE consecutive positions (see
+<a class="reference external" href="lastdb.html">lastdb.html</a>).  By default, this parameter takes the same
+value as was used for lastdb -W.</td></tr>
 </tbody>
 </table>
 </blockquote>
@@ -574,37 +600,11 @@ aligned to either strand of the query.  1 means that the matrix
 applies to either strand of the reference aligned to the forward
 strand of the query.</td></tr>
 <tr><td class="option-group">
-<kbd><span class="option">-T <var>NUMBER</var></span></kbd></td>
-<td>Type of alignment: 0 means &quot;local alignment&quot; and 1 means
-&quot;overlap alignment&quot;.  Local alignments can end anywhere in the
-middle or at the ends of the sequences.  Overlap alignments must
-extend to the left until they hit the end of a sequence (either
-query or reference), and to the right until they hit the end of
-a sequence.</td></tr>
-<tr><td class="option-group">
-<kbd><span class="option">-m <var>MULTIPLICITY</var></span></kbd></td>
-<td><p class="first">Maximum multiplicity for initial matches.  Each initial match is
-lengthened until it occurs at most this many times in the
-reference.</p>
-<p class="last">If the reference was split into volumes by lastdb, then lastal
-uses one volume at a time.  The maximum multiplicity then
-applies to each volume, not the whole reference.  This is why
-voluming changes the results.</p>
-</td></tr>
-<tr><td class="option-group">
-<kbd><span class="option">-l <var>LENGTH</var></span></kbd></td>
-<td>Minimum length for initial matches.  Length means the number of
-letters spanned by the match.</td></tr>
-<tr><td class="option-group">
-<kbd><span class="option">-L <var>LENGTH</var></span></kbd></td>
-<td>Maximum length for initial matches.</td></tr>
-<tr><td class="option-group">
-<kbd><span class="option">-n <var>COUNT</var></span></kbd></td>
-<td>Maximum number of gapless alignments per query position.  When
-lastal extends gapless alignments from initial matches that
-start at one query position, if it gets COUNT successful
-extensions, it skips any remaining initial matches starting at
-that position.</td></tr>
+<kbd><span class="option">-K <var>LIMIT</var></span></kbd></td>
+<td>Omit any alignment whose query range lies in LIMIT or more other
+alignments with higher score (and on the same strand).  This is
+a useful way to get just the top few hits to each part of each
+query (P Berman et al. 2000, J Comput Biol 7:293-302).</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-C <var>LIMIT</var></span></kbd></td>
 <td>Before extending gapped alignments, discard any gapless
@@ -613,15 +613,12 @@ the same strand and volume) with higher score-per-length.  This
 can reduce run time and output size (MC Frith &amp; R Kawaguchi
 2015, Genome Biol 16:106).</td></tr>
 <tr><td class="option-group">
-<kbd><span class="option">-K <var>LIMIT</var></span></kbd></td>
-<td>Omit any alignment whose query range lies in LIMIT or more other
-alignments with higher score (and on the same strand).  This is
-a useful way to get just the top few hits to each part of each
-query (P Berman et al. 2000, J Comput Biol 7:293-302).</td></tr>
-<tr><td class="option-group">
-<kbd><span class="option">-k <var>STEP</var></span></kbd></td>
-<td>Look for initial matches starting only at every STEP-th position
-in the query.  This makes lastal faster but less sensitive.</td></tr>
+<kbd><span class="option">-P <var>THREADS</var></span></kbd></td>
+<td>Divide the work between this number of threads running in
+parallel.  0 means use as many threads as your computer claims
+it can handle simultaneously.  Single query sequences are not
+divided between threads, so you need multiple queries per batch
+for this option to take effect.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-i <var>BYTES</var></span></kbd></td>
 <td><p class="first">Search queries in batches of at most this many bytes.  If a
@@ -633,12 +630,49 @@ results (apart from their order).</p>
 volume will be read into memory once per query batch.</p>
 </td></tr>
 <tr><td class="option-group">
-<kbd><span class="option">-P <var>THREADS</var></span></kbd></td>
-<td>Divide the work between this number of threads running in
-parallel.  0 means use as many threads as your computer claims
-it can handle simultaneously.  Single query sequences are not
-divided between threads, so you need multiple queries per batch
-for this option to take effect.</td></tr>
+<kbd><span class="option">-M</span></kbd></td>
+<td><p class="first">Find minimum-difference alignments, which is faster but cruder.
+This treats all matches the same, and minimizes the number of
+differences (mismatches plus gaps).</p>
+<ul class="last">
+<li><p class="first">Any substitution score matrix will be ignored.  The
+substitution scores are set by the match score (r) and the
+mismatch cost (q).</p>
+</li>
+<li><p class="first">The gap cost parameters will be ignored.  The gap existence
+cost will be 0 and the gap extension cost will be q + r/2.</p>
+</li>
+<li><p class="first">The match score (r) must be an even number.</p>
+</li>
+<li><p class="first">Any sequence quality data (e.g. fastq) will be ignored.</p>
+</li>
+</ul>
+</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-T <var>NUMBER</var></span></kbd></td>
+<td><p class="first">Type of alignment: 0 means &quot;local alignment&quot; and 1 means
+&quot;overlap alignment&quot;.  Local alignments can end anywhere in the
+middle or at the ends of the sequences.  Overlap alignments must
+extend to the left until they hit the end of a sequence (either
+query or reference), and to the right until they hit the end of
+a sequence.</p>
+<p class="last"><strong>Warning:</strong> it's often a bad idea to use -T1.  This setting
+does not change the maximum score drop allowed inside
+alignments, so if an alignment cannot be extended to the end of
+a sequence without exceeding this drop, it will be discarded.</p>
+</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-n <var>COUNT</var></span></kbd></td>
+<td>Maximum number of gapless alignments per query position.  When
+lastal extends gapless alignments from initial matches that
+start at one query position, if it gets COUNT successful
+extensions, it skips any remaining initial matches starting at
+that position.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-N <var>COUNT</var></span></kbd></td>
+<td>Stop after finding COUNT alignments per query strand.  This
+makes lastal faster: it quits gapless and gapped extensions as
+soon as it finds COUNT alignments with score ≥ e.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-R <var>DIGITS</var></span></kbd></td>
 <td><p class="first">Specify lowercase-marking of repeats, by two digits (e.g. &quot;-R 01&quot;),
@@ -665,13 +699,24 @@ applied to the DNA after translation, at the protein level.</p>
 </td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-u <var>NUMBER</var></span></kbd></td>
-<td>Specify treatment of lowercase letters when extending
-alignments.  0 means do not mask them; 1 means mask them for
-gapless extensions; 2 means mask them for gapless and gapped
-extensions but not final extensions; 3 means mask them at all
-stages.  &quot;Mask&quot; means change their match/mismatch scores to
-min(unmasked score, 0).  This option does not affect treatment
-of lowercase for initial matches.</td></tr>
+<td><p class="first">Specify treatment of lowercase letters when extending
+alignments:</p>
+<ol class="arabic" start="0">
+<li><p class="first">Mask them for neither gapless nor gapped extensions.</p>
+</li>
+<li><p class="first">Mask them for gapless but not gapped extensions.</p>
+</li>
+<li><p class="first">Mask them for gapless but not gapped extensions, and then
+discard alignments that lack any segment with score ≥ e when
+lowercase is masked.</p>
+</li>
+<li><p class="first">Mask them for gapless and gapped extensions.</p>
+</li>
+</ol>
+<p class="last">&quot;Mask&quot; means change their match/mismatch scores to min(unmasked
+score, 0).  This option does not affect treatment of lowercase
+for initial matches.</p>
+</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-w <var>DISTANCE</var></span></kbd></td>
 <td><p class="first">This option is a kludge to avoid catastrophic time and memory
@@ -871,6 +916,11 @@ time.</p>
 enough memory to hold several volumes simultaneously, or run lastal on
 one volume at a time.  An efficient scheme is to use a different
 computer for each volume.</p>
+</div>
+<div class="section" id="lastal8">
+<h2>lastal8</h2>
+<p>lastal8 has identical usage to lastal, and is used with <a class="reference external" href="lastdb.html">lastdb8</a>.  lastal cannot read the output of lastdb8, and
+lastal8 cannot read the output of lastdb.</p>
 </div>
 </div>
 </body>

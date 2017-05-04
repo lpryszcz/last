@@ -1,10 +1,109 @@
 #! /usr/bin/env python
 # Copyright 2015 Martin C. Frith
 
-import fileinput, math, optparse, os, signal, subprocess, sys
+import math, optparse, os, random, signal, subprocess, sys, tempfile
 
-def tabSeparatedString(things):
-    return "\t".join(map(str, things))
+def randomSample(things, sampleSize):
+    """Randomly get sampleSize things (or all if fewer)."""
+    reservoir = []  # "reservoir sampling" algorithm
+    for i, x in enumerate(things):
+        if i < sampleSize:
+            reservoir.append(x)
+        else:
+            r = random.randrange(i + 1)
+            if r < sampleSize:
+                reservoir[r] = x
+    return reservoir
+
+def writeWords(outFile, words):
+    outFile.write(" ".join(words) + "\n")
+
+def seqInput(fileNames):
+    for name in fileNames:
+        with open(name) as file:
+            seqType = 0
+            for line in file:
+                if seqType == 0:
+                    if line[0] == ">":
+                        seqType = 1
+                        seq = []
+                    elif line[0] == "@":
+                        seqType = 2
+                        lineType = 1
+                elif seqType == 1:  # fasta
+                    if line[0] == ">":
+                        yield "".join(seq), ""
+                        seq = []
+                    else:
+                        seq.append(line.rstrip())
+                elif seqType == 2:  # fastq
+                    if lineType == 1:
+                        seq = line.rstrip()
+                    elif lineType == 3:
+                        yield seq, line.rstrip()
+                    lineType = (lineType + 1) % 4
+            if seqType == 1: yield "".join(seq), ""
+
+def isGoodChunk(chunk):
+    for i in chunk:
+        for j in i[3]:
+            if j not in "Nn":
+                return True
+    return False
+
+def chunkInput(opts, sequences):
+    chunkCount = 0
+    chunk = []
+    wantedLength = opts.sample_length
+    for i, x in enumerate(sequences):
+        seq, qual = x
+        if all(i in "Nn" for i in seq): continue
+        seqLength = len(seq)
+        beg = 0
+        while beg < seqLength:
+            length = min(wantedLength, seqLength - beg)
+            end = beg + length
+            segment = i, beg, end, seq[beg:end], qual[beg:end]
+            chunk.append(segment)
+            wantedLength -= length
+            if not wantedLength:
+                if isGoodChunk(chunk):
+                    yield chunk
+                    chunkCount += 1
+                chunk = []
+                wantedLength = opts.sample_length
+            beg = end
+    if chunk and chunkCount < opts.sample_number:
+        yield chunk
+
+def writeSegment(outfile, segment):
+    if not segment: return
+    i, beg, end, seq, qual = segment
+    name = str(i) + ":" + str(beg)
+    if qual:
+        outfile.write("@" + name + "\n")
+        outfile.write(seq)
+        outfile.write("\n+\n")
+        outfile.write(qual)
+    else:
+        outfile.write(">" + name + "\n")
+        outfile.write(seq)
+    outfile.write("\n")
+
+def getSeqSample(opts, queryFiles, outfile):
+    sequences = seqInput(queryFiles)
+    chunks = chunkInput(opts, sequences)
+    sample = randomSample(chunks, opts.sample_number)
+    sample.sort()
+    x = None
+    for chunk in sample:
+        for y in chunk:
+            if x and y[0] == x[0] and y[1] == x[2]:
+                x = x[0], x[1], y[2], x[3] + y[3], x[4] + y[4]
+            else:
+                writeSegment(outfile, x)
+                x = y
+    writeSegment(outfile, x)
 
 def scaleFromHeader(lines):
     for line in lines:
@@ -70,6 +169,45 @@ def scoreFromProb(scale, prob):
 def costFromProb(scale, prob):
     return -scoreFromProb(scale, prob)
 
+def guessAlphabet(matrixSize):
+    if matrixSize ==  4: return "ACGT"
+    if matrixSize == 20: return "ACDEFGHIKLMNPQRSTVWY"
+    raise Exception("can't handle unusual alphabets")
+
+def matrixWithLetters(matrix):
+    alphabet = guessAlphabet(len(matrix))
+    return [alphabet] + [[a] + i for a, i in zip(alphabet, matrix)]
+
+def writeMatrixHead(outFile, prefix, alphabet, formatString):
+    writeWords(outFile, [prefix + " "] + [formatString % k for k in alphabet])
+
+def writeMatrixBody(outFile, prefix, alphabet, matrix, formatString):
+    for i, j in zip(alphabet, matrix):
+        writeWords(outFile, [prefix + i] + [formatString % k for k in j])
+
+def writeCountMatrix(outFile, matrix, prefix):
+    alphabet = guessAlphabet(len(matrix))
+    writeMatrixHead(outFile, prefix, alphabet, "%-14s")
+    writeMatrixBody(outFile, prefix, alphabet, matrix, "%-14s")
+
+def writeProbMatrix(outFile, matrix, prefix):
+    alphabet = guessAlphabet(len(matrix))
+    writeMatrixHead(outFile, prefix, alphabet, "%-14s")
+    writeMatrixBody(outFile, prefix, alphabet, matrix, "%-14g")
+
+def writeScoreMatrix(outFile, matrix, prefix):
+    alphabet = guessAlphabet(len(matrix))
+    writeMatrixHead(outFile, prefix, alphabet, "%6s")
+    writeMatrixBody(outFile, prefix, alphabet, matrix, "%6s")
+
+def writeMatrixWithLetters(outFile, matrix, prefix):
+    head = matrix[0]
+    tail = matrix[1:]
+    left = [i[0] for i in tail]
+    body = [i[1:] for i in tail]
+    writeMatrixHead(outFile, prefix, head, "%6s")
+    writeMatrixBody(outFile, prefix, left, body, "%6s")
+
 def matProbsFromCounts(counts, opts):
     r = range(len(counts))
     if opts.revsym:  # add complement (reverse strand) substitutions
@@ -82,22 +220,14 @@ def matProbsFromCounts(counts, opts):
 
     print "# substitution percent identity: %g" % (100 * identities / total)
     print
-    print "# count matrix:"
-    for i in counts:
-        print "#", tabSeparatedString(i)
+    print "# count matrix (query letters = columns, reference letters = rows):"
+    writeCountMatrix(sys.stdout, counts, "# ")
     print
-    print "# probability matrix:"
-    for i in probs:
-        print "#", tabSeparatedString("%g" % j for j in i)
+    print "# probability matrix (query letters = columns, reference letters = rows):"
+    writeProbMatrix(sys.stdout, probs, "# ")
     print
 
     return probs
-
-def printMatScores(scores):
-    print "# score matrix:"
-    for i in scores:
-        print "#", tabSeparatedString(i)
-    print
 
 def gapProbsFromCounts(counts, opts):
     matches, deletes, inserts, delOpens, insOpens, alignments = counts
@@ -134,9 +264,15 @@ def gapProbsFromCounts(counts, opts):
     insCloseProb = 1 - insExtendProb
     firstDelProb = delOpenProb * delCloseProb
     firstInsProb = insOpenProb * insCloseProb
-    # if we define "alignment" to mean "set of indistinguishable paths":
+
+    # If we define "an alignment" to mean "a set of indistinguishable
+    # paths", then:
     #delExtendProb += firstDelProb
     #insExtendProb += firstInsProb
+    # Else, this ensures gap existence cost >= 0:
+    delExtendProb = max(delExtendProb, firstDelProb)
+    insExtendProb = max(insExtendProb, firstInsProb)
+
     delExistProb = firstDelProb / delExtendProb
     insExistProb = firstInsProb / insExtendProb
 
@@ -162,22 +298,8 @@ def gapCostsFromProbs(scale, probs):
     if insExtendCost == 0: insExtendCost = 1
     return delExistCost, insExistCost, delExtendCost, insExtendCost
 
-def guessAlphabet(matrixSize):
-    if matrixSize ==  4: return "ACGT"
-    if matrixSize == 20: return "ACDEFGHIKLMNPQRSTVWY"
-    raise Exception("can't handle unusual alphabets")
-
-def matrixWithLetters(matrix):
-    alphabet = guessAlphabet(len(matrix))
-    return [alphabet] + [[a] + i for a, i in zip(alphabet, matrix)]
-
 def writeLine(out, *things):
     out.write(" ".join(map(str, things)) + "\n")
-
-def writeMatrixWithLetters(matrix, out):
-    writeLine(out, " ", tabSeparatedString(matrix[0]))
-    for i in matrix[1:]:
-        writeLine(out, i[0], tabSeparatedString(i[1:]))
 
 def writeGapCosts(gapCosts, out):
     delExistCost, insExistCost, delExtendCost, insExtendCost = gapCosts
@@ -212,7 +334,7 @@ def fixedLastalArgs(opts):
     if opts.Q: x.append("-Q" + opts.Q)
     return x
 
-def lastTrain(opts, args):
+def doTraining(opts, args):
     tryToMakeChildProgramsFindable()
     scaleIncrease = 20  # while training, up-scale the scores by this amount
     x = fixedLastalArgs(opts)
@@ -242,6 +364,7 @@ def lastTrain(opts, args):
     while True:
         print "#", " ".join(x)
         print
+        sys.stdout.flush()
         matCounts, gapCounts = countsFromLastOutput(q.stdout, opts)
         gapProbs = gapProbsFromCounts(gapCounts, opts)
         gapCosts = gapCostsFromProbs(internalScale, gapProbs)
@@ -252,7 +375,9 @@ def lastTrain(opts, args):
         else:
             matProbs = matProbsFromCounts(matCounts, opts)
             matScores = matScoresFromProbs(internalScale, matProbs)
-            printMatScores(matScores)
+            print "# score matrix (query letters = columns, reference letters = rows):"
+            writeScoreMatrix(sys.stdout, matScores, "# ")
+            print
             parameters = gapCosts, matScores
             if parameters in oldParameters: break
             oldParameters.append(parameters)
@@ -262,7 +387,7 @@ def lastTrain(opts, args):
         x += args
         p = subprocess.Popen(x, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         writeGapCosts(gapCosts, p.stdin)
-        writeMatrixWithLetters(internalMatrix, p.stdin)
+        writeMatrixWithLetters(p.stdin, internalMatrix, "")
         p.stdin.close()
         # in python2.6, the next line must come after p.stdin.close()
         q = subprocess.Popen(y, stdin=p.stdout, stdout=subprocess.PIPE)
@@ -274,11 +399,26 @@ def lastTrain(opts, args):
     if not opts.Q:
         matScores = matScoresFromProbs(externalScale, matProbs)
         externalMatrix = matrixWithLetters(matScores)
-    writeMatrixWithLetters(externalMatrix, sys.stdout)
+    print "# score matrix (query letters = columns, reference letters = rows):"
+    writeMatrixWithLetters(sys.stdout, externalMatrix, "")
+
+def lastTrain(opts, args):
+    if opts.sample_number:
+        random.seed(math.pi)
+        refName = args[0]
+        queryFiles = args[1:]
+        try:
+            with tempfile.NamedTemporaryFile(delete=False) as f:
+                getSeqSample(opts, queryFiles, f)
+            doTraining(opts, [refName, f.name])
+        finally:
+            os.remove(f.name)
+    else:
+        doTraining(opts, args)
 
 if __name__ == "__main__":
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # avoid silly error message
-    usage = "%prog lastdb-name sequence-file(s)"
+    usage = "%prog [options] lastdb-name sequence-file(s)"
     description = "Try to find suitable score parameters for aligning the given sequences."
     op = optparse.OptionParser(usage=usage, description=description)
     og = optparse.OptionGroup(op, "Training options")
@@ -290,6 +430,10 @@ if __name__ == "__main__":
                   help="force insertion/deletion symmetry")
     og.add_option("--pid", type="float", default=100, help=
                   "skip alignments with > PID% identity (default: %default)")
+    og.add_option("--sample-number", type="int", default=500, metavar="N",
+                  help="number of random sequence samples (default: %default)")
+    og.add_option("--sample-length", type="int", default=2000, metavar="L",
+                  help="length of each sample (default: %default)")
     op.add_option_group(og)
     og = optparse.OptionGroup(op, "Initial parameter options")
     og.add_option("-r", metavar="SCORE",

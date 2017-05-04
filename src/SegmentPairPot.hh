@@ -51,7 +51,7 @@ struct SegmentPairPot{
 
   // mark (near-)tandem repeats within sp
   // to avoid death by dynamic programming when self-aligning a large sequence
-  void markTandemRepeats( const SegmentPair& sp, indexT maxDistance );
+  void markTandemRepeats( const SegmentPair& sp, size_t maxDistance );
 
   // data:
   std::vector<SegmentPair> items;

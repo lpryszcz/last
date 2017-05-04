@@ -14,8 +14,6 @@
 namespace cbrc{
 
 struct LastdbArguments{
-  typedef unsigned indexT;
-
   // set the parameters to their default values:
   LastdbArguments();
 
@@ -36,18 +34,21 @@ struct LastdbArguments{
   int tantanSetting;
   bool isCaseSensitive;
   std::vector< std::string > seedPatterns;
-  size_t volumeSize;  // type?
-  indexT indexStep;
+  size_t volumeSize;
+  size_t indexStep;
+  size_t minimizerWindow;
+  unsigned numOfThreads;
   std::string subsetSeedFile;
   std::string userAlphabet;
-  indexT minSeedLimit;
-  indexT bucketDepth;
+  size_t minSeedLimit;
+  unsigned bucketDepth;
   int childTableType;
   bool isCountsOnly;
   int verbosity;
   sequenceFormat::Enum inputFormat;
 
   // positional arguments:
+  const char* programName;
   std::string lastdbName;
   int inputStart;  // index in argv of first input filename
 };

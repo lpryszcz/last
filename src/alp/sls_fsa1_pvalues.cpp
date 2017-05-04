@@ -106,13 +106,6 @@ double &E_,
 double &E_error_,
 
 double &area_,
-
-double a_normal_,
-double b_normal_,
-double h_normal_,
-long int N_normal_,
-double *p_normal_,
-
 bool &area_is_1_flag_)
 {
 
@@ -181,8 +174,6 @@ bool &area_is_1_flag_)
 		tau_hat_error_=0;
 	};
 
-	double eps=0.000001;
-
 	double m_li_y_error=0;
 	double m_li_y=0;
 
@@ -218,7 +209,7 @@ bool &area_is_1_flag_)
 	};
 
 
-	double P_m_F=sls_basic::normal_probability(a_normal_,b_normal_,h_normal_,N_normal_,p_normal_,m_F,eps);
+	double P_m_F=sls_basic::normal_probability(m_F);
 	double P_m_F_error=const_val*exp(-0.5*m_F*m_F)*m_F_error;
 
 	double E_m_F=-const_val*exp(-0.5*m_F*m_F);
@@ -270,7 +261,7 @@ bool &area_is_1_flag_)
 		n_F=n_lj_y/sqrt_vj_y;
 	};
 
-	double P_n_F=sls_basic::normal_probability(a_normal_,b_normal_,h_normal_,N_normal_,p_normal_,n_F,eps);
+	double P_n_F=sls_basic::normal_probability(n_F);
 	double P_n_F_error=const_val*exp(-0.5*n_F*n_F)*n_F_error;
 
 	double E_n_F=-const_val*exp(-0.5*n_F*n_F);
@@ -385,13 +376,6 @@ double &P_,
 double &E_,
 
 double &area_,
-
-double a_normal_,
-double b_normal_,
-double h_normal_,
-long int N_normal_,
-double *p_normal_,
-
 bool &area_is_1_flag_,
 bool compute_only_area_)
 {
@@ -438,8 +422,6 @@ bool compute_only_area_)
 		tau_hat_=0;
 	};
 
-	double eps=0.000001;
-
 	double m_li_y=0;
 
 	double tmp=ai_hat_*y_+bi_hat_;
@@ -463,7 +445,7 @@ bool compute_only_area_)
 	};
 
 
-	double P_m_F=sls_basic::normal_probability(a_normal_,b_normal_,h_normal_,N_normal_,p_normal_,m_F,eps);
+	double P_m_F=sls_basic::normal_probability(m_F);
 
 	double E_m_F=-const_val*exp(-0.5*m_F*m_F);
 
@@ -498,7 +480,7 @@ bool compute_only_area_)
 		n_F=n_lj_y/sqrt_vj_y;
 	};
 
-	double P_n_F=sls_basic::normal_probability(a_normal_,b_normal_,h_normal_,N_normal_,p_normal_,n_F,eps);
+	double P_n_F=sls_basic::normal_probability(n_F);
 
 	double E_n_F=-const_val*exp(-0.5*n_F*n_F);
 
@@ -575,12 +557,6 @@ double &P_error_,
 
 double &E_,
 double &E_error_,
-
-double a_normal_,
-double b_normal_,
-double h_normal_,
-long int N_normal_,
-double *p_normal_,
 
 bool &area_is_1_flag_)
 {
@@ -696,13 +672,6 @@ bool &area_is_1_flag_)
 		E_tmp,
 
 		area_tmp,
-
-		a_normal_,
-		b_normal_,
-		h_normal_,
-		N_normal_,
-		p_normal_,
-
 		area_is_1_flag_);
 
 		P_values[i]=P_tmp;
@@ -880,11 +849,6 @@ bool read_Sbs_par_flag)
 		E,
 
 		area,
-		a_normal,
-		b_normal,
-		h_normal,
-		N_normal,
-		p_normal,
 		area_is_1_flag);
 
 
@@ -906,11 +870,6 @@ bool read_Sbs_par_flag)
 			E_tmp,
 			E_error,
 
-			a_normal,
-			b_normal,
-			h_normal,
-			N_normal,
-			p_normal,
 			area_is_1_flag);
 
 
@@ -954,11 +913,6 @@ bool read_Sbs_par_flag)
 		E_error,
 
 		area,
-		a_normal,
-		b_normal,
-		h_normal,
-		N_normal,
-		p_normal,
 		area_is_1_flag);
 
 		P_value_error=P_error;

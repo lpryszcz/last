@@ -342,10 +342,10 @@ sequences with names like &quot;chrUn_random522&quot; like this:</p>
 <pre class="literal-block">
 last-dotplot -1 'chr[!U]*' -2 'chr[!U]*' alns alns.png
 </pre>
-<p>Option &quot;-1&quot; selects sequences from the 1st genome, and &quot;-2&quot; selects
-sequences from the 2nd genome.  'chr[!U]*' is a <em>pattern</em> that
-specifies names starting with &quot;chr&quot;, followed by any character except
-U, followed by anything.</p>
+<p>Option &quot;-1&quot; selects sequences from the 1st (horizontal) genome, and
+&quot;-2&quot; selects sequences from the 2nd (vertical) genome.  'chr[!U]*' is
+a <em>pattern</em> that specifies names starting with &quot;chr&quot;, followed by any
+character except U, followed by anything.</p>
 <table border="1" class="docutils">
 <colgroup>
 <col width="26%" />
@@ -376,6 +376,11 @@ names starting in &quot;chr&quot; followed by one or two characters:</p>
 <pre class="literal-block">
 last-dotplot -1 'chr?' -1 'chr??' alns alns.png
 </pre>
+<p>You can also specify a sequence range; for example this gets the first
+1000 bases of chr9:</p>
+<pre class="literal-block">
+last-dotplot -1 chr9:0-1000 alns alns.png
+</pre>
 </div>
 <div class="section" id="options">
 <h2>Options</h2>
@@ -389,10 +394,10 @@ last-dotplot -1 'chr?' -1 'chr??' alns alns.png
 <td>Show a help message, with default option values, and exit.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-1 <var>PATTERN</var></span>, <span class="option">--seq1=<var>PATTERN</var></span></kbd></td>
-<td>Which sequences to show from the 1st genome.</td></tr>
+<td>Which sequences to show from the 1st (horizontal) genome.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-2 <var>PATTERN</var></span>, <span class="option">--seq2=<var>PATTERN</var></span></kbd></td>
-<td>Which sequences to show from the 2nd genome.</td></tr>
+<td>Which sequences to show from the 2nd (vertical) genome.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-x <var>WIDTH</var></span>, <span class="option">--width=<var>WIDTH</var></span></kbd></td>
 <td>Maximum width in pixels.</td></tr>
@@ -400,20 +405,67 @@ last-dotplot -1 'chr?' -1 'chr??' alns alns.png
 <kbd><span class="option">-y <var>HEIGHT</var></span>, <span class="option">--height=<var>HEIGHT</var></span></kbd></td>
 <td>Maximum height in pixels.</td></tr>
 <tr><td class="option-group">
+<kbd><span class="option">-c <var>COLOR</var></span>, <span class="option">--forwardcolor=<var>COLOR</var></span></kbd></td>
+<td>Color for forward alignments.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-r <var>COLOR</var></span>, <span class="option">--reversecolor=<var>COLOR</var></span></kbd></td>
+<td>Color for reverse alignments.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--sort1=<var>N</var></span></kbd></td>
+<td>Put the 1st genome's sequences left-to-right in order of: their
+appearance in the input (0), their names (1), their lengths (2).</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--sort2=<var>N</var></span></kbd></td>
+<td>Put the 2nd genome's sequences top-to-bottom in order of: their
+appearance in the input (0), their names (1), their lengths (2).</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--trim1</span></kbd></td>
+<td>Trim unaligned sequence flanks from the 1st (horizontal) genome.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--trim2</span></kbd></td>
+<td>Trim unaligned sequence flanks from the 2nd (vertical) genome.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--border-pixels=<var>INT</var></span></kbd></td>
+<td>Number of pixels between sequences.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--border-color=<var>COLOR</var></span></kbd></td>
+<td>Color for pixels between sequences.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--bed1=<var>FILE</var></span></kbd></td>
+<td>Read <a class="reference external" href="https://genome.ucsc.edu/FAQ/FAQformat.html#format1">BED-format</a>
+annotations for the 1st genome.  They are drawn as rectangles,
+with coordinates given by the first three BED fields.  The color
+is specified by the RGB field if present, else pale red if the
+strand is &quot;+&quot;, pale blue if &quot;-&quot;, or pale purple.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--bed2=<var>FILE</var></span></kbd></td>
+<td>Read BED-format annotations for the 2nd genome.</td></tr>
+</tbody>
+</table>
+</blockquote>
+<div class="section" id="text-options">
+<h3>Text options</h3>
+<blockquote>
+<table class="docutils option-list" frame="void" rules="none">
+<col class="option" />
+<col class="description" />
+<tbody valign="top">
+<tr><td class="option-group">
 <kbd><span class="option">-f <var>FILE</var></span>, <span class="option">--fontfile=<var>FILE</var></span></kbd></td>
 <td>TrueType or OpenType font file.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-s <var>SIZE</var></span>, <span class="option">--fontsize=<var>SIZE</var></span></kbd></td>
 <td>TrueType or OpenType font size.</td></tr>
 <tr><td class="option-group">
-<kbd><span class="option">-c <var>COLOR</var></span>, <span class="option">--forwardcolor=<var>COLOR</var></span></kbd></td>
-<td>Color for forward alignments.</td></tr>
+<kbd><span class="option">--lengths1</span></kbd></td>
+<td>Show sequence lengths for the 1st (horizontal) genome.</td></tr>
 <tr><td class="option-group">
-<kbd><span class="option">-r <var>COLOR</var></span>, <span class="option">--reversecolor=<var>COLOR</var></span></kbd></td>
-<td>Color for reverse alignments.</td></tr>
+<kbd><span class="option">--lengths2</span></kbd></td>
+<td>Show sequence lengths for the 2nd (vertical) genome.</td></tr>
 </tbody>
 </table>
 </blockquote>
+</div>
 <div class="section" id="unsequenced-gap-options">
 <h3>Unsequenced gap options</h3>
 <p>Note: these &quot;gaps&quot; are <em>not</em> alignment gaps (indels): they are regions

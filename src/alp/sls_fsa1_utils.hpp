@@ -51,12 +51,6 @@ Contents: Frameshift alignment algorithms utilities
 #include <climits>
 #include <errno.h>
 
-#ifndef _MSC_VER //UNIX program
-#include <sys/time.h>
-#else
-#include <sys/timeb.h>
-#endif
-
 #include "njn_random.hpp"
 #include "njn_uniform.hpp"
 

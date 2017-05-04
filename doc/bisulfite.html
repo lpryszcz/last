@@ -318,6 +318,13 @@ table.field-list { border: thin solid green }
 <div class="document" id="aligning-bisulfite-converted-dna-reads-to-a-genome">
 <h1 class="title">Aligning bisulfite-converted DNA reads to a genome</h1>
 
+<div class="section" id="the-easy-way">
+<h2>The easy way</h2>
+<p>Use <a class="reference external" href="http://epigenome.cbrc.jp/bisulfighter">Bisulfighter</a>, which
+wraps LAST.</p>
+</div>
+<div class="section" id="the-hard-way">
+<h2>The hard way</h2>
 <p>Bisulfite is used to detect methylated cytosines.  It converts
 unmethylated Cs to Ts, but it leaves methylated Cs intact.  If we then
 sequence the DNA and align it to a reference genome, we can infer
@@ -359,7 +366,7 @@ last-bisulfite.sh my_f my_r reads.fastq &gt; results.maf
 parallel-fastq &quot;last-bisulfite.sh my_f my_r&quot; &lt; reads.fastq &gt; results.maf
 </pre>
 <div class="section" id="tips">
-<h2>Tips</h2>
+<h3>Tips</h3>
 <ul>
 <li><p class="first">To go faster, try gapless alignment (add -j1 to the lastal options).
 Often, this is only minusculely less accurate than gapped alignment.</p>
@@ -373,7 +380,7 @@ ln -f my_f.tis my_r.tis
 </ul>
 </div>
 <div class="section" id="paired-end-dna-reads">
-<h2>Paired-end DNA reads</h2>
+<h3>Paired-end DNA reads</h3>
 <p>You can align paired-end reads by combining the preceding recipe with
 the one in <a class="reference external" href="last-pair-probs.html">last-pair-probs.html</a>.  This gets a bit complicated, so
 we provide a last-bisulfite-paired script in the examples directory.
@@ -389,6 +396,7 @@ last-bisulfite-paired.sh my_f my_r reads1.fastq reads2.fastq &gt; results.maf
 reverse-complement (i.e. they have G-&gt;A conversions).  It requires GNU
 parallel to be installed.  You are encouraged to customize this
 script.</p>
+</div>
 </div>
 </div>
 </body>

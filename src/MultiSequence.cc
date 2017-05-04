@@ -5,7 +5,6 @@
 #include <sstream>
 #include <algorithm>  // upper_bound
 #include <cassert>
-#include <cctype>  // isspace
 #include <iterator>  // istreambuf_iterator
 
 using namespace cbrc;
@@ -29,7 +28,7 @@ void MultiSequence::reinitForAppending(){
 }
 
 void MultiSequence::fromFiles( const std::string& baseName, indexT seqCount,
-                               std::size_t qualitiesPerLetter ){
+                               size_t qualitiesPerLetter ){
   ends.m.open( baseName + ".ssp", seqCount + 1 );
   seq.m.open( baseName + ".tis", ends.m.back() );
   nameEnds.m.open( baseName + ".sds", seqCount + 1 );
@@ -91,8 +90,8 @@ MultiSequence::appendFromFasta( std::istream& stream, indexT maxSeqLen ){
   std::istreambuf_iterator<char> endpos;
   while( inpos != endpos ){
     uchar c = *inpos;
-    if( c == '>' ) break;  // we have hit the next FASTA sequence
-    if( !std::isspace(c) ){
+    if( c > ' ' ){  // faster than isspace
+      if( c == '>' ) break;  // we have hit the next FASTA sequence
       if( seq.v.size() >= maxSeqLen ) break;
       seq.v.push_back(c);
     }

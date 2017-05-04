@@ -59,9 +59,20 @@ public:
     // Outputs some algorithm parameters on lines starting with "#"
     void printParameters() const;
 
-    // Prepares to analyze some candidate alignments for one query sequence
-    void initForOneQuery(std::vector<UnsplitAlignment>::const_iterator beg,
-			 std::vector<UnsplitAlignment>::const_iterator end);
+    // Prepares to analyze some candidate alignments for one query
+    // sequence: sets the number of DP matrix cells (and thus memory)
+    void layout(std::vector<UnsplitAlignment>::const_iterator beg,
+		std::vector<UnsplitAlignment>::const_iterator end);
+
+    // The number of cells in each dynamic programming matrix
+    size_t cellsPerDpMatrix() const
+    { return matrixRowOrigins[numAlns-1] + dpEnd(numAlns-1) + 1; }
+
+    // Bytes of memory needed for the current query sequence (roughly)
+    size_t memory(bool isViterbi, bool isBothSpliceStrands) const;
+
+    // Call this before viterbi/forward/backward, and after layout
+    void initMatricesForOneQuery();
 
     long viterbi();  // returns the optimal split-alignment score
 
@@ -91,9 +102,20 @@ public:
     // Toggles between forward and reverse-complement splice signals
     void flipSpliceSignals();
 
-    // The probability that the query uses splice signals in the
-    // orientation currently set by flipSpliceSignals()
-    double spliceSignalStrandProb() const;
+    // This returns log(p / (1-p)), where p is the probability that
+    // the query uses splice signals in the orientation currently set
+    // by flipSpliceSignals()
+    double spliceSignalStrandLogOdds() const;
+
+    // Gets the 2 genome bases immediately downstream of queryPos in
+    // alnNum, and writes them into the buffer pointed to by "out"
+    void spliceBegSignal(char *out, unsigned alnNum, unsigned queryPos,
+			 bool isSenseStrand) const;
+
+    // Gets the 2 genome bases immediately upstream of queryPos in
+    // alnNum, and writes them into the buffer pointed to by "out"
+    void spliceEndSignal(char *out, unsigned alnNum, unsigned queryPos,
+			 bool isSenseStrand) const;
 
 private:
     static const int numQualCodes = 64;
@@ -143,6 +165,8 @@ private:
     double spliceTerm1;
     double spliceTerm2;
     unsigned maxSpliceDist;
+    int maxSpliceScore;
+    int maxSpliceBegEndScore;
     std::vector<unsigned> spliceBegCoords;
     std::vector<unsigned> spliceEndCoords;
     std::vector<unsigned char> spliceBegSignals;
@@ -153,31 +177,29 @@ private:
     std::vector<int> spliceScoreTable;  // lookup table
     std::vector<double> spliceProbTable;  // lookup table
     unsigned spliceTableSize;
-    MultiSequence genome;
+    MultiSequence genome[32];
     Alphabet alphabet;
-    typedef std::map<std::string, unsigned> StringNumMap;
+    typedef std::map<std::string, unsigned long long> StringNumMap;
     StringNumMap chromosomeIndex;
     int spliceBegScores[4 * 4 + 1];  // donor score for any dinucleotide
     int spliceEndScores[4 * 4 + 1];  // acceptor score for any dinucleotide
     double spliceBegProbs[4 * 4 + 1];
     double spliceEndProbs[4 * 4 + 1];
-    unsigned spliceBegSignal(unsigned coordinate, char strand) const;
-    unsigned spliceEndSignal(unsigned coordinate, char strand) const;
-    int spliceBegScore(unsigned i, unsigned j) const {
+    int spliceBegScore(size_t ij) const {
       if (chromosomeIndex.empty()) return 0;
-      return spliceBegScores[cell(spliceBegSignals, i, j)];
+      return spliceBegScores[spliceBegSignals[ij]];
     }
-    int spliceEndScore(unsigned i, unsigned j) const {
+    int spliceEndScore(size_t ij) const {
       if (chromosomeIndex.empty()) return 0;
-      return spliceEndScores[cell(spliceEndSignals, i, j)];
+      return spliceEndScores[spliceEndSignals[ij]];
     }
-    double spliceBegProb(unsigned i, unsigned j) const {
+    double spliceBegProb(size_t ij) const {
       if (chromosomeIndex.empty()) return 1;
-      return spliceBegProbs[cell(spliceBegSignals, i, j)];
+      return spliceBegProbs[spliceBegSignals[ij]];
     }
-    double spliceEndProb(unsigned i, unsigned j) const {
+    double spliceEndProb(size_t ij) const {
       if (chromosomeIndex.empty()) return 1;
-      return spliceEndProbs[cell(spliceEndSignals, i, j)];
+      return spliceEndProbs[spliceEndSignals[ij]];
     }
     int calcSpliceScore(double dist) const;
     int spliceScore(unsigned d) const
@@ -186,11 +208,16 @@ private:
     { return scaledExp(calcSpliceScore(dist)); }
     double spliceProb(unsigned d) const
     { return d < spliceTableSize ? spliceProbTable[d] : calcSpliceProb(d); }
-    void initSpliceCoords();
-    void initSpliceSignals();
+    void initSpliceCoords(unsigned i);
+    void initSpliceSignals(unsigned i);
     void initRnameAndStrandIds();
+    void initRbegsAndEnds();
+    size_t maxGenomeVolumes() const { return sizeof genome / sizeof *genome; }
+    void readGenomeVolume(const std::string& baseName,
+			  size_t seqCount, size_t volumeNumber);
 
-    int maxJumpScore() const;
+    void dpExtensionMinScores(int maxJumpScore,
+			      size_t& minScore1, size_t& minScore2) const;
 
     void updateInplayAlnIndicesF(unsigned& sortedAlnPos,
 				 unsigned& oldNumInplay,
@@ -239,7 +266,7 @@ private:
       // stored in a flat vector.  There are numAlns rows, and row i
       // has dpEnd(i) - dpBeg(i) + 1 cells.  (The final cell per row
       // is used in some matrices but not others.)
-      m.resize(matrixRowOrigins[numAlns-1] + dpEnd(numAlns-1) + 1);
+      m.resize(cellsPerDpMatrix());
     }
 
     double probFromSpliceF(unsigned i, unsigned j, unsigned oldNumInplay,
@@ -249,15 +276,7 @@ private:
 			   unsigned& oldInplayPos) const;
 
     void calcBaseScores(unsigned i);
-    void calcInsScores(unsigned i);
-    void calcDelScores(unsigned i);
-    void calcScoreMatrices();
-    void initForwardBackward();
     void initDpBounds();
-
-    long scoreIndel(unsigned i, unsigned j) const {
-      return cell(Vmat, i, j) + cell(Dmat, i, j);
-    }
 };
 
 }

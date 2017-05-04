@@ -38,15 +38,20 @@ void unstringifySize( T& x, const std::string& s ){
 
   std::string suffix;
   if( iss >> suffix ){
-    int multiplier;
-    /**/ if( suffix == "K" ) multiplier = 1024;  // "KibiBytes"
-    else if( suffix == "M" ) multiplier = 1024*1024;  // "MebiBytes"
-    else if( suffix == "G" ) multiplier = 1024*1024*1024;  // "GibiBytes"
+    int i;
+    /**/ if( suffix == "K" ) i = 1;  // "KibiBytes"
+    else if( suffix == "M" ) i = 2;  // "MebiBytes"
+    else if( suffix == "G" ) i = 3;  // "GibiBytes"
+    else if( suffix == "T" ) i = 4;  // "TebiBytes"
+    else if( suffix == "P" ) i = 5;  // "PebiBytes"
     else throw std::runtime_error( "can't interpret: " + s );
-    if( (x * multiplier) / multiplier != x ){  // check for overflow
-      throw std::runtime_error( "can't interpret (too big): " + s );
+
+    while( i-- ){
+      if( (x * 1024) / 1024 != x ){
+	throw std::runtime_error( "can't interpret (too big): " + s );
+      }
+      x *= 1024;
     }
-    x *= multiplier;
   }
 
   if( !(iss >> std::ws).eof() ){
@@ -54,5 +59,6 @@ void unstringifySize( T& x, const std::string& s ){
   }
 }
 
-}  // end namespace cbrc
-#endif  // STRINGIFY_HH
+}
+
+#endif

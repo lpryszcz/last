@@ -333,19 +333,19 @@ breakpoints, or RNA queries that cross splice junctions.</p>
 format), and the genome is in &quot;genome.fasta&quot; (in fasta format).  We
 can do the alignment like this:</p>
 <pre class="literal-block">
-lastdb -uNEAR db genome.fasta
-lastal -Q1 -e120 db q.fastq | last-split &gt; out.maf
+lastdb -uNEAR -R01 db genome.fasta
+lastal -Q1 -D100 db q.fastq | last-split &gt; out.maf
 </pre>
 </div>
 <div class="section" id="spliced-alignment-of-rna-reads-to-a-genome">
 <h3>Spliced alignment of RNA reads to a genome</h3>
-<p>Now we assume that &quot;q.fastq&quot; has reads from RNA forward strands.  This
-time, we provide the genome information to last-split, which causes it
-to do spliced instead of split alignment, and also tells it where the
-splice signals are (GT, AG, etc):</p>
+<p>Now we assume that &quot;q.fastq&quot; has reads from RNA forward (sense)
+strands.  This time, we provide the genome information to last-split,
+which causes it to do spliced instead of split alignment, and also
+tells it where the splice signals are (GT, AG, etc):</p>
 <pre class="literal-block">
-lastdb -uNEAR db genome.fasta
-lastal -Q1 -e120 db q.fastq | last-split -g db &gt; out.maf
+lastdb -uNEAR -R01 db genome.fasta
+lastal -Q1 -D10 db q.fastq | last-split -g db &gt; out.maf
 </pre>
 <p>This will favour splices starting at GT (and to a lesser extent GC and
 AT), and ending at AG (and to a lesser extent AC).  However, it allows
@@ -353,12 +353,18 @@ splices starting and ending anywhere.  It also favours splices with
 introns of typical length, specified by a log-normal distribution
 (i.e. cis-splices).  However, it allows arbitrary trans-splices
 between any two places in the genome.</p>
+<p>-D10 sets a very loose significance threshold, so that we can find
+very short parts of a spliced alignment (e.g. short exons).  Note that
+last-split discards the lowest-significance alignments, but it uses
+them to estimate the ambiguity of higher-significance alignments.</p>
+<p>If your reads are from unknown/mixed RNA strands, add -d2 to the
+last-split options.</p>
 </div>
 <div class="section" id="alignment-of-two-whole-genomes">
 <h3>Alignment of two whole genomes</h3>
 <p>We can align the cat and rat genomes like this:</p>
 <pre class="literal-block">
-lastdb -cR11 -uMAM8 catdb cat.fasta
+lastdb -uMAM8 -cR11 catdb cat.fasta
 lastal -m100 -E0.05 catdb rat.fasta | last-split -m1 &gt; out.maf
 </pre>
 <p>This will align each rat base-pair to at most one cat base-pair, but
@@ -391,7 +397,7 @@ matches.</p>
 <h2>Going faster by parallelization</h2>
 <p>For example, split alignment of DNA reads to a genome:</p>
 <pre class="literal-block">
-parallel-fastq &quot;lastal -Q1 -e120 db | last-split&quot; &lt; q.fastq &gt; out.maf
+parallel-fastq &quot;lastal -Q1 -D100 db | last-split&quot; &lt; q.fastq &gt; out.maf
 </pre>
 <p>This requires GNU parallel to be installed
 (<a class="reference external" href="http://www.gnu.org/software/parallel/">http://www.gnu.org/software/parallel/</a>).</p>
@@ -539,8 +545,8 @@ of the query.)</p>
 <p>Spliced alignment can be slow.  It can be sped up, at a small cost in
 accuracy, by not favouring cis-splices:</p>
 <pre class="literal-block">
-lastdb -uNEAR db genome.fasta
-lastal -Q1 -e120 db q.fastq | last-split -c0 -t0.004 -g db &gt; out.maf
+lastdb -uNEAR -R01 db genome.fasta
+lastal -Q1 -D10 db q.fastq | last-split -c0 -t0.004 -g db &gt; out.maf
 </pre>
 <p>The -c0 turns off cis-splicing, and the -t0.004 specifies a higher
 probability of trans-splicing.</p>
@@ -551,8 +557,8 @@ probability of trans-splicing.</p>
 middle of the query, we can do &quot;spliced&quot; alignment without considering
 splice signals or favouring cis-splices:</p>
 <pre class="literal-block">
-lastdb -uNEAR db genome.fasta
-lastal -Q1 -e120 db q.fastq | last-split -c0 &gt; out.maf
+lastdb -uNEAR -R01 db genome.fasta
+lastal -Q1 -D100 db q.fastq | last-split -c0 &gt; out.maf
 </pre>
 </div>
 </div>
@@ -573,10 +579,16 @@ from the named genome.  NAME should be the name of a lastdb
 database.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-d</span>, <span class="option">--direction=<var>D</var></span></kbd></td>
-<td>Do spliced alignment, and set the strandedness of the
-queries: 0=reverse, 1=forward, 2=unknown/mixed.  This
+<td><p class="first">Do spliced alignment, and set the strandedness of the
+queries: 0=antisense, 1=sense, 2=unknown/mixed.  This
 determines whether forward and/or reverse-complement splice
-signals are used.</td></tr>
+signals are used.</p>
+<p>If you use -d2, the output will have an extra &quot;sense&quot; field,
+indicating the log-odds that the query is sense-stranded:</p>
+<pre class="last literal-block">
+log2[ prob(sense) / prob(antisense) ]
+</pre>
+</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-c</span>, <span class="option">--cis=<var>PROB</var></span></kbd></td>
 <td>Do spliced alignment, and set the average probability per
@@ -605,11 +617,11 @@ increase this value!</td></tr>
 <p>For SPLIT alignment, the default value is e (the lastal score
 threshold).  Alignments with score just above INT will get
 high mismap probabilities.</p>
-<p class="last">For SPLICED alignment, the default value is e + t * ln(1000),
+<p class="last">For SPLICED alignment, the default value is e + t * ln(100),
 where t is a scale factor that is written in the lastal
 header.  This roughly means that, for every alignment it
 writes, it has considered alternative alignments with
-one-thousandth the probability.  Alignments with score just
+one-hundredth the probability.  Alignments with score just
 above INT will not necessarily get high mismap probabilities.</p>
 </td></tr>
 <tr><td class="option-group">
@@ -618,6 +630,14 @@ above INT will not necessarily get high mismap probabilities.</p>
 <em>original</em> alignments, annotated with &quot;p&quot; lines and mismap
 probabilities.  Note that the mismap and score limits still
 apply.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-b</span>, <span class="option">--bytes=<var>B</var></span></kbd></td>
+<td>Skip any query sequence that would require more than B bytes
+of memory to process.  (This only limits the size of some
+core data-structures: the total memory use will be greater.)
+A warning is written for each skipped sequence.  You can use
+suffixes such as K (KibiBytes), M (MebiBytes), G (GibiBytes),
+T (TebiBytes), e.g. -b20G.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-v</span>, <span class="option">--verbose</span></kbd></td>
 <td>Show progress information on the screen.</td></tr>
@@ -658,6 +678,12 @@ the first one.</p>
 alignments are oriented to use the forward strand of the query.</p>
 </li>
 </ul>
+</div>
+<div class="section" id="last-split8">
+<h2>last-split8</h2>
+<p>last-split8 is almost identical to last-split.  The only difference is
+the -g option: last-split can only read the output of lastdb, whereas
+last-split8 can only read the output of <a class="reference external" href="lastdb.html">lastdb8</a>.</p>
 </div>
 <div class="section" id="limitations">
 <h2>Limitations</h2>
