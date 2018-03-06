@@ -34,6 +34,8 @@ public:
     UnsplitAlignment(StringIt linesBegIn, StringIt linesEndIn)
       : linesBeg(linesBegIn), linesEnd(linesEndIn) { init(); }
     void init();
+    bool isForwardStrand() const { return qstrand < 2; }
+    bool isFlipped() const { return qstrand % 2; }
 };
 
 void flipMafStrands(StringIt linesBeg, StringIt linesEnd);

@@ -96,7 +96,7 @@ void Alignment::makeXdrop( Centroid& centroid,
   }
 
   // extend a gapped alignment in the left/reverse direction from the seed:
-  std::vector<uchar>& columnAmbiguityCodes = extras.columnAmbiguityCodes;
+  std::vector<char>& columnAmbiguityCodes = extras.columnAmbiguityCodes;
   extend( blocks, columnAmbiguityCodes, centroid, greedyAligner, isGreedy,
 	  seq1, seq2, seed.beg1(), seed.beg2(), false, globality,
 	  scoreMatrix, smMax, maxDrop, gap, frameshiftCost,
@@ -116,7 +116,7 @@ void Alignment::makeXdrop( Centroid& centroid,
 
   // extend a gapped alignment in the right/forward direction from the seed:
   std::vector<SegmentPair> forwardBlocks;
-  std::vector<uchar> forwardAmbiguities;
+  std::vector<char> forwardAmbiguities;
   extend( forwardBlocks, forwardAmbiguities, centroid, greedyAligner, isGreedy,
 	  seq1, seq2, seed.end1(), seed.end2(), true, globality,
 	  scoreMatrix, smMax, maxDrop, gap, frameshiftCost,
@@ -262,13 +262,12 @@ bool Alignment::hasGoodSegment(const uchar *seq1, const uchar *seq2,
   return false;
 }
 
-static void getColumnAmbiguities(const Centroid& centroid,
-				 std::vector<uchar>& ambiguityCodes,
-				 const std::vector<SegmentPair>& chunks,
-				 bool isForward) {
+static void getColumnCodes(const Centroid& centroid, std::vector<char>& codes,
+			   const std::vector<SegmentPair>& chunks,
+			   bool isForward) {
   for (size_t i = 0; i < chunks.size(); ++i) {
     const SegmentPair& x = chunks[i];
-    centroid.getMatchAmbiguities(ambiguityCodes, x.end1(), x.end2(), x.size);
+    centroid.getMatchAmbiguities(codes, x.end1(), x.end2(), x.size);
     size_t j = i + 1;
     bool isNext = (j < chunks.size());
     size_t end1 = isNext ? chunks[j].end1() : 0;
@@ -276,17 +275,17 @@ static void getColumnAmbiguities(const Centroid& centroid,
     // ASSUMPTION: if there is an insertion adjacent to a deletion,
     // the deletion will get printed first.
     if (isForward) {
-      centroid.getInsertAmbiguities(ambiguityCodes, x.beg2(), end2);
-      centroid.getDeleteAmbiguities(ambiguityCodes, x.beg1(), end1);
+      centroid.getInsertAmbiguities(codes, x.beg2(), end2);
+      centroid.getDeleteAmbiguities(codes, x.beg1(), end1);
     } else {
-      centroid.getDeleteAmbiguities(ambiguityCodes, x.beg1(), end1);
-      centroid.getInsertAmbiguities(ambiguityCodes, x.beg2(), end2);
+      centroid.getDeleteAmbiguities(codes, x.beg1(), end1);
+      centroid.getInsertAmbiguities(codes, x.beg2(), end2);
     }
   }
 }
 
 void Alignment::extend( std::vector< SegmentPair >& chunks,
-			std::vector< uchar >& ambiguityCodes,
+			std::vector< char >& columnCodes,
 			Centroid& centroid,
 			GreedyXdropAligner& greedyAligner, bool isGreedy,
 			const uchar* seq1, const uchar* seq2,
@@ -358,7 +357,7 @@ void Alignment::extend( std::vector< SegmentPair >& chunks,
 
   score += extensionScore;
 
-  if( outputType < 5 || outputType == 7 ){  // ordinary max-score alignment
+  if( outputType < 5 || outputType > 6 ){  // ordinary max-score alignment
     size_t end1, end2, size;
     if( isGreedy ){
       while( greedyAligner.getNextChunk( end1, end2, size ) )
@@ -375,16 +374,19 @@ void Alignment::extend( std::vector< SegmentPair >& chunks,
   if( outputType > 3 ){  // calculate match probabilities
     assert( !isGreedy );
     assert( !sm2qual );
-    centroid.reset();
-    centroid.forward( seq1, seq2, start1, start2, isForward, globality, gap );
-    centroid.backward( seq1, seq2, start1, start2, isForward, globality, gap );
+    if (!isForward) {
+      --start1;
+      --start2;
+    }
+    centroid.doForwardBackwardAlgorithm(seq1, seq2, start1, start2, isForward,
+					gap, globality);
 
     if( outputType > 4 && outputType < 7 ){  // gamma-centroid / LAMA alignment
       centroid.dp( gamma );
       centroid.traceback( chunks, gamma );
     }
 
-    getColumnAmbiguities( centroid, ambiguityCodes, chunks, isForward );
+    getColumnCodes(centroid, columnCodes, chunks, isForward);
     extras.fullScore += centroid.logPartitionFunction();
 
     if( outputType == 7 ){

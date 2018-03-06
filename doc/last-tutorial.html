@@ -484,33 +484,13 @@ the two reads in a pair to match (e.g.) different chromosomes.</p>
 </li>
 </ul>
 </div>
-<div class="section" id="example-8-compare-the-cat-and-rat-genomes">
-<h2>Example 8: Compare the cat and rat genomes</h2>
-<p>If you have ~50 GB of memory and don't mind waiting a few days, this
-is a good way to compare such genomes:</p>
-<pre class="literal-block">
-lastdb -uMAM8 -cR11 catdb cat.fa
-lastal -m100 -E0.05 catdb rat.fa | last-split -m1 &gt; out.maf
-</pre>
-<p>This looks for a unique best alignment for each part of each rat
-chromosome.  Omitting -m100 makes it faster but somewhat less
-sensitive.  Omitting -uMAM8 reduces the memory use to ~10 GB and makes
-it faster but considerably less sensitive.</p>
-<p>This recipe aligns each rat base-pair to at most one cat base-pair,
-but not necessarily vice-versa.  You can get strictly 1-to-1
-alignments by swapping the sequences and running last-split again:</p>
-<pre class="literal-block">
-maf-swap out.maf | last-split -m1 &gt; out2.maf
-</pre>
+<div class="section" id="example-8-compare-the-human-and-mouse-genomes">
+<h2>Example 8: Compare the human and mouse genomes</h2>
+<p>See <a class="reference external" href="https://github.com/mcfrith/last-genome-alignments">here</a>.</p>
 </div>
 <div class="section" id="example-9-compare-the-human-and-chimp-genomes">
 <h2>Example 9: Compare the human and chimp genomes</h2>
-<p>For strongly similar genomes (e.g. 99% identity), something like this
-is more appropriate:</p>
-<pre class="literal-block">
-lastdb -uNEAR -cR11 human human.fa
-lastal -m50 -E0.05 human chimp.fa | last-split -m1 &gt; out.maf
-</pre>
+<p>See <a class="reference external" href="https://github.com/mcfrith/last-genome-alignments">here</a>.</p>
 </div>
 <div class="section" id="example-10-ambiguity-of-alignment-columns">
 <h2>Example 10: Ambiguity of alignment columns</h2>

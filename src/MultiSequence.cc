@@ -19,12 +19,21 @@ void MultiSequence::initForAppending( indexT padSizeIn ){
 }
 
 void MultiSequence::reinitForAppending(){
-  seq.v.erase( seq.v.begin(), seq.v.begin() + ends.v.back() - padSize );
-  names.v.erase( names.v.begin(),
-                 names.v.begin() + nameEnds.v[ finishedSequences() ] );
+  size_t n = finishedSequences();
+  size_t s = padBeg(n);
+
+  seq.v.erase(seq.v.begin(), seq.v.begin() + s);
+  names.v.erase(names.v.begin(), names.v.begin() + nameEnds.v[n]);
   ends.v.resize(1);
   nameEnds.v.resize(1);
   if( !names.v.empty() ) nameEnds.v.push_back( names.v.size() );
+
+  qualityScores.v.erase(qualityScores.v.begin(),
+			qualityScores.v.begin() + s * qualsPerLetter());
+
+  if (!pssm.empty()) {
+    pssm.erase(pssm.begin(), pssm.begin() + s * scoreMatrixRowSize);
+  }
 }
 
 void MultiSequence::fromFiles( const std::string& baseName, indexT seqCount,
@@ -56,13 +65,6 @@ void MultiSequence::toFiles( const std::string& baseName ) const{
   memoryToBinaryFile( qualityScores.begin(),
                       qualityScores.begin() + ends.back() * qualsPerLetter(),
                       baseName + ".qua" );
-}
-
-void MultiSequence::addName( std::string& name ){
-  names.v.insert( names.v.end(), name.begin(), name.end() );
-  nameEnds.v.push_back( names.v.size() );
-  if( nameEnds.v.back() < names.v.size() )
-    throw std::runtime_error("the sequence names are too long");
 }
 
 std::istream& MultiSequence::readFastaName( std::istream& stream ){
@@ -98,25 +100,8 @@ MultiSequence::appendFromFasta( std::istream& stream, indexT maxSeqLen ){
     ++inpos;
   }
 
-  if( isFinishable(maxSeqLen) ) finish();
+  if (isRoomToAppendPad(maxSeqLen)) finish();
   return stream;
-}
-
-void MultiSequence::finish(){
-  assert( !isFinished() );
-  seq.v.insert( seq.v.end(), padSize, ' ' );
-  ends.v.push_back( seq.v.size() );
-  assert( ends.v.back() == seq.v.size() );
-}
-
-void MultiSequence::unfinish(){
-  assert( isFinished() );
-  ends.v.pop_back();
-  seq.v.erase( seq.v.end() - padSize, seq.v.end() );
-}
-
-bool MultiSequence::isFinishable( indexT maxSeqLen ) const{
-  return seq.v.size() + padSize <= maxSeqLen;
 }
 
 MultiSequence::indexT MultiSequence::whichSequence( indexT coordinate ) const{
@@ -125,7 +110,61 @@ MultiSequence::indexT MultiSequence::whichSequence( indexT coordinate ) const{
   return u - ends.begin() - 1;
 }
 
-std::string MultiSequence::seqName( indexT seqNum ) const{
-  return std::string( names.begin() + nameEnds[ seqNum ],
-		      names.begin() + nameEnds[ seqNum + 1 ] );
+static void reverseComplementPssm(int *beg, int *end,
+				  const uchar *complement) {
+  while (beg < end) {
+    end -= scoreMatrixRowSize;
+    for (unsigned i = 0; i < scoreMatrixRowSize; ++i) {
+      unsigned j = complement[i];
+      if (beg < end || i < j) std::swap(beg[i], end[j]);
+    }
+    beg += scoreMatrixRowSize;
+  }
+}
+
+void MultiSequence::reverseComplementOneSequence(indexT seqNum,
+						 const uchar *complement) {
+  size_t b = seqBeg(seqNum);
+  size_t e = seqEnd(seqNum);
+
+  uchar *s = seqWriter();
+  std::reverse(s + b, s + e);
+  for (size_t i = b; i < e; ++i) {
+    s[i] = complement[s[i]];
+  }
+
+  reverse(qualityScores.v.begin() + b * qualsPerLetter(),
+	  qualityScores.v.begin() + e * qualsPerLetter());
+
+  if (!pssm.empty()) {
+    int *p = &pssm[0];
+    reverseComplementPssm(p + b * scoreMatrixRowSize,
+			  p + e * scoreMatrixRowSize, complement);
+  }
+
+  char &strandChar = names.v[nameEnds.v[seqNum + 1] - 1];
+  strandChar = "\n\t"[strandChar == '\n'];
+}
+
+void MultiSequence::duplicateOneSequence(indexT seqNum) {
+  indexT nameBeg = nameEnds[seqNum];
+  indexT nameEnd = nameEnds[seqNum + 1];
+  for (indexT i = nameBeg; i < nameEnd; ++i) {
+    names.v.push_back(names.v[i]);
+  }
+  finishName();
+
+  size_t b = seqBeg(seqNum);
+  size_t e = padEnd(seqNum);
+
+  for (size_t i = b; i < e; ++i) {
+    seq.v.push_back(seq.v[i]);
+  }
+  ends.v.push_back(seq.v.size());
+
+  for (size_t i = b * qualsPerLetter(); i < e * qualsPerLetter(); ++i) {
+    qualityScores.v.push_back(qualityScores.v[i]);
+  }
+
+  assert(pssm.empty());  // implement this if & when needed
 }

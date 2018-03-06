@@ -32,6 +32,8 @@ class SubsetSuffixArray{
 public:
   typedef LAST_INT_TYPE indexT;
 
+  struct Range {indexT* beg; indexT* end; indexT depth;};
+
   CyclicSubsetSeed& getSeed() { return seed; }
   const CyclicSubsetSeed& getSeed() const { return seed; }
 
@@ -44,8 +46,8 @@ public:
 		     size_t step, size_t minimizerWindow );
 
   // Sort the suffix array (but don't make the buckets).
-  void sortIndex( const uchar* text,
-		  size_t maxUnsortedInterval, int childTableType );
+  void sortIndex( const uchar* text, size_t maxUnsortedInterval,
+		  int childTableType, size_t numOfThreads );
 
   // Make the buckets.  If bucketDepth+1 == 0, then a default
   // bucketDepth is used.  The default is: the maximum possible
@@ -121,17 +123,26 @@ private:
 
   void sort2( const uchar* text, indexT* beg, const uchar* subsetMap );
 
-  void radixSort1( const uchar* text, const uchar* subsetMap,
+  void radixSort1( std::vector<Range>& rangeStack,
+		   const uchar* text, const uchar* subsetMap,
 		   indexT* beg, indexT* end, indexT depth );
-  void radixSort2( const uchar* text, const uchar* subsetMap,
+  void radixSort2( std::vector<Range>& rangeStack,
+		   const uchar* text, const uchar* subsetMap,
 		   indexT* beg, indexT* end, indexT depth );
-  void radixSort3( const uchar* text, const uchar* subsetMap,
+  void radixSort3( std::vector<Range>& rangeStack,
+		   const uchar* text, const uchar* subsetMap,
 		   indexT* beg, indexT* end, indexT depth );
-  void radixSort4( const uchar* text, const uchar* subsetMap,
+  void radixSort4( std::vector<Range>& rangeStack,
+		   const uchar* text, const uchar* subsetMap,
 		   indexT* beg, indexT* end, indexT depth );
-  void radixSortN( const uchar* text, const uchar* subsetMap,
+  void radixSortN( std::vector<Range>& rangeStack,
+		   const uchar* text, const uchar* subsetMap,
 		   indexT* beg, indexT* end, indexT depth,
-		   unsigned subsetCount );
+		   unsigned subsetCount, indexT* bucketSize );
+
+  void sortRanges( std::vector<Range>* stacks, indexT* bucketSizes,
+		   const uchar* text, size_t maxUnsortedInterval,
+		   size_t numOfThreads );
 
   // Same as the 1st equalRange, but uses more info and may be faster:
   void equalRange( indexT& beg, indexT& end, const uchar* textBase,

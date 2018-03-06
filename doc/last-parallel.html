@@ -372,11 +372,11 @@ parallel-fastq &quot;lastal -Q1 -D100 db | last-split&quot; &lt; q.fastq &gt; ou
 </pre>
 <p>Instead of this:</p>
 <pre class="literal-block">
-zcat queries.fa.gz | lastal mydb &gt; myalns.maf
+bzcat queries.fa.bz2 | lastal mydb &gt; myalns.maf
 </pre>
 <p>try this:</p>
 <pre class="literal-block">
-zcat queries.fa.gz | parallel-fasta &quot;lastal mydb&quot; &gt; myalns.maf
+bzcat queries.fa.bz2 | parallel-fasta &quot;lastal mydb&quot; &gt; myalns.maf
 </pre>
 <p>Notes:</p>
 <ul>

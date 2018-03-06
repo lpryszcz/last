@@ -2,7 +2,7 @@
 
 #include "ScoreMatrix.hh"
 #include "ScoreMatrixData.hh"
-#include "io.hh"
+#include "zio.hh"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>  // min, max
@@ -32,7 +32,7 @@ std::string ScoreMatrix::stringFromName( const std::string& name ){
     if( n == scoreMatrices[i].name )
       return scoreMatrices[i].text;
 
-  return slurp( n );
+  return slurp( n.c_str() );
 }
 
 void ScoreMatrix::matchMismatch( int match, int mismatch,
@@ -104,7 +104,8 @@ void ScoreMatrix::init( const uchar encode[] ){
   }
 
   // set a hugely negative score for the delimiter symbol:
-  uchar z = encode[' '];
+  uchar delimiter = ' ';
+  uchar z = encode[delimiter];
   assert( z < MAT );
   for( unsigned i = 0; i < MAT; ++i ){
     caseSensitive[z][i] = -INF;

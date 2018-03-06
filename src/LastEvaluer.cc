@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <iostream>
 
 #define COUNTOF(a) (sizeof (a) / sizeof *(a))
 
@@ -263,7 +264,8 @@ void LastEvaluer::init(const char *matrixName,
 		       int insEpen,
 		       int frameshiftCost,
 		       const GeneticCode &geneticCode,
-		       bool isStandardGeneticCode) {
+		       bool isStandardGeneticCode,
+		       int verbosity) {
   const double lambdaTolerance = 0.01;
   const double kTolerance = 0.05;
   const double maxMegabytes = 500;
@@ -357,10 +359,25 @@ void LastEvaluer::init(const char *matrixName,
 
     if (isGapped) {
       evaluer.set_gapped_computation_parameters_simplified(maxSeconds);
-      evaluer.initGapped(alphabetSize, &matrix[0], letterFreqs2, letterFreqs1,
-			 delOpen, delEpen, insOpen, insEpen,
-			 true, lambdaTolerance, kTolerance,
-			 0, maxMegabytes, randomSeed);
+      for (int i = 0; ; ++i) {
+	double t = Sls::default_importance_sampling_temperature + 0.01 * i;
+	if (verbosity > 0) std::cerr << "try temperature=" << t << " ";
+	try {
+	  evaluer.initGapped(alphabetSize, &matrix[0],
+			     letterFreqs2, letterFreqs1,
+			     delOpen, delEpen, insOpen, insEpen,
+			     true, lambdaTolerance, kTolerance,
+			     0, maxMegabytes, randomSeed, t);
+	  if (verbosity > 0) std::cerr << "OK\n";
+	  break;
+	} catch (const Sls::error& e) {
+	  if (verbosity > 0) std::cerr << "NG\n";
+	  if (verbosity > 1) {
+	    std::cerr << "ALP: " << e.error_code << ": " << e.st;
+	  }
+	  if (i == 20) throw;
+	}
+      }
     } else {
       evaluer.initGapless(alphabetSize, &matrix[0],
 			  letterFreqs2, letterFreqs1);

@@ -2,7 +2,7 @@
 
 #include "LastalArguments.hh"
 #include "stringify.hh"
-#include <unistd.h>  // getopt
+#include "getoptUtil.hh"
 #include <algorithm>  // max
 #include <iostream>
 #include <sstream>
@@ -41,6 +41,18 @@ static char parseOutputFormat( const char* text ){
   return 0;
 }
 
+static int parseScoreOrPercent(const std::string &s) {
+  int x;
+  std::istringstream iss(s);
+  if(!(iss >> x) || x < 0) ERR("bad value: " + s);
+  char c;
+  if (iss >> c) {
+    if (c != '%' || iss >> c) ERR("bad value: " + s);
+    x = -x;  // negative value indicates percentage (kludge)
+  }
+  return x;
+}
+
 namespace cbrc{
 
 LastalArguments::LastalArguments() :
@@ -66,7 +78,7 @@ LastalArguments::LastalArguments() :
   gapPairCost(-1),  // this means: OFF
   frameshiftCost(-1),  // this means: ordinary, non-translated alignment
   matrixFile(""),
-  maxDropGapped(-1),  // depends on minScoreGapped & maxDropGapless
+  maxDropGapped(-100),  // depends on minScoreGapped & maxDropGapless
   maxDropGapless(-1),  // depends on the score matrix
   maxDropFinal(-1),  // depends on maxDropGapped
   inputFormat(sequenceFormat::fasta),
@@ -116,8 +128,8 @@ Score options (default settings):\n\
 -B: insertion extension cost (b)\n\
 -c: unaligned residue pair cost (off)\n\
 -F: frameshift cost (off)\n\
--x: maximum score drop for gapped alignments (max[y, e-1])\n\
--y: maximum score drop for gapless alignments (t*10)\n\
+-x: maximum score drop for gapped alignments (e-1)\n\
+-y: maximum score drop for gapless alignments (min[t*10, x])\n\
 -z: maximum score drop for final gapped alignments (x)\n\
 -d: minimum score for gapless alignments (min[e, t*ln(1000*refSize/n)])\n\
 -e: minimum score for gapped alignments\n\
@@ -167,7 +179,6 @@ Report bugs to: last-align (ATmark) googlegroups (dot) com\n\
 LAST home page: http://last.cbrc.jp/\n\
 ";
 
-  optind = 1;  // allows us to scan arguments more than once(???)
   int c;
   const char optionString[] = "hVvf:" "r:q:p:a:b:A:B:c:F:x:y:z:d:e:" "D:E:"
     "s:S:MT:m:l:L:n:N:C:K:k:W:i:P:R:u:w:t:g:G:j:Q:";
@@ -223,8 +234,7 @@ LAST home page: http://last.cbrc.jp/\n\
       if( frameshiftCost < 0 ) badopt( c, optarg );
       break;
     case 'x':
-      unstringify( maxDropGapped, optarg );
-      if( maxDropGapped < 0 ) badopt( c, optarg );
+      maxDropGapped = parseScoreOrPercent(optarg);
       break;
     case 'y':
       unstringify( maxDropGapless, optarg );
@@ -368,11 +378,14 @@ LAST home page: http://last.cbrc.jp/\n\
   if( isGreedy && maskLowercase == 3 )
     ERR( "can't combine option -M with option -u 3" );
 
-  if( optionsOnly ) return;
-  if( optind >= argc )
-    ERR( "please give me a database name and sequence file(s)\n\n" + usage );
-  lastdbName = argv[optind++];
-  inputStart = optind;
+  if( !optionsOnly ){
+    if( optind >= argc )
+      ERR( "please give me a database name and sequence file(s)\n\n" + usage );
+    lastdbName = argv[optind++];
+    inputStart = optind;
+  }
+
+  resetGetopt();
 }
 
 void LastalArguments::fromLine( const std::string& line ){
@@ -523,13 +536,17 @@ To proceed without E-values, set a score threshold with option -e.");
 
   if( temperature < 0 ) temperature = 1 / lambda;
 
+  if( maxDropGapped < 0 ){
+    int percent = -maxDropGapped;
+    maxDropGapped = std::max( minScoreGapped - 1, 0 );
+    maxDropGapped = std::max( maxDropGapped, maxDropGapless );
+    if (percent != 100) maxDropGapped = maxDropGapped * percent / 100;
+  }
+
   if( maxDropGapless < 0 ){  // should it depend on temperature or lambda?
     if( temperature < 0 ) maxDropGapless = 0;  // shouldn't happen
     else                  maxDropGapless = int( 10.0 * temperature + 0.5 );
-  }
-
-  if( maxDropGapped < 0 ){
-    maxDropGapped = std::max( minScoreGapped - 1, maxDropGapless );
+    maxDropGapless = std::min( maxDropGapless, maxDropGapped );
   }
 
   if( maxDropFinal < 0 ) maxDropFinal = maxDropGapped;

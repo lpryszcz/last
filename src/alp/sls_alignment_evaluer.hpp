@@ -40,6 +40,7 @@ Contents: library functions of main routines
 #include <math.h>
 
 namespace Sls {
+	const double default_importance_sampling_temperature = 1.07;
 
 	class AlignmentEvaluer {
 
@@ -100,7 +101,8 @@ namespace Sls {
 			double eps_K_,//relative error for the parameter K
 			double max_time_,//maximum allowed calculation time in seconds; 
 			double max_mem_,//maximum allowed memory usage in Mb
-			long randomSeed_);//randomizaton seed
+			long randomSeed_,//randomizaton seed
+			double temperature_=default_importance_sampling_temperature);
 
 
 	//Initializes Gumbel parameters using precalculated values:

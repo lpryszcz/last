@@ -90,21 +90,19 @@ private:
 
 AlignmentText Alignment::write(const MultiSequence& seq1,
 			       const MultiSequence& seq2,
-			       size_t seqNum2, char strand,
-			       const uchar* seqData2,
+			       size_t seqNum2, const uchar* seqData2,
 			       bool isTranslated, const Alphabet& alph,
 			       const LastEvaluer& evaluer, int format,
 			       const AlignmentExtras& extras) const {
   assert( !blocks.empty() );
 
   if( format == 'm' )
-    return writeMaf( seq1, seq2, seqNum2, strand, seqData2,
+    return writeMaf( seq1, seq2, seqNum2, seqData2,
 		     isTranslated, alph, evaluer, extras );
   if( format == 't' )
-    return writeTab( seq1, seq2, seqNum2, strand,
-		     isTranslated, evaluer, extras );
+    return writeTab( seq1, seq2, seqNum2, isTranslated, evaluer, extras );
   else
-    return writeBlastTab( seq1, seq2, seqNum2, strand, seqData2,
+    return writeBlastTab( seq1, seq2, seqNum2, seqData2,
 			  isTranslated, alph, evaluer, format == 'B' );
 }
 
@@ -178,8 +176,7 @@ static char* writeTags( const LastEvaluer& evaluer, double queryLength,
 
 AlignmentText Alignment::writeTab(const MultiSequence& seq1,
 				  const MultiSequence& seq2,
-				  size_t seqNum2, char strand,
-				  bool isTranslated,
+				  size_t seqNum2, bool isTranslated,
 				  const LastEvaluer& evaluer,
 				  const AlignmentExtras& extras) const {
   size_t alnBeg1 = beg1();
@@ -197,7 +194,9 @@ AlignmentText Alignment::writeTab(const MultiSequence& seq1,
 
   IntText sc(score);
   std::string n1 = seq1.seqName(seqNum1);
+  char strand1 = seq1.strand(seqNum1);
   std::string n2 = seq2.seqName(seqNum2);
+  char strand2 = seq2.strand(seqNum2);
   IntText b1(alnBeg1 - seqStart1);
   IntText b2(alnBeg2 - seqStart2);
   IntText r1(alnEnd1 - alnBeg1);
@@ -220,13 +219,13 @@ AlignmentText Alignment::writeTab(const MultiSequence& seq1,
   char *text = new char[textLen + 1];
   Writer w(text);
   w << sc << t;
-  w << n1 << t << b1 << t << r1 << t << '+'    << t << s1 << t;
-  w << n2 << t << b2 << t << r2 << t << strand << t << s2 << t;
+  w << n1 << t << b1 << t << r1 << t << strand1 << t << s1 << t;
+  w << n2 << t << b2 << t << r2 << t << strand2 << t << s2 << t;
   w.copy(&blockText[0] + blockText.size() - blockLen, blockLen);
   w.copy(tags, tagLen);
   w << '\0';
 
-  return AlignmentText(seqNum2, alnBeg2, alnEnd2, strand, score, 0, 0, text);
+  return AlignmentText(seqNum2, alnBeg2, alnEnd2, strand2, score, 0, 0, text);
 }
 
 static void putLeft(Writer &w, const std::string &t, size_t width) {
@@ -274,13 +273,6 @@ static void writeMafHeadQ(char *out,
   w.fill(qLineBlankLen, ' ');
 }
 
-// Write the first part of a "p" line:
-static void writeMafHeadP(char *out, size_t pLineBlankLen) {
-  Writer w(out);
-  w << 'p' << ' ';
-  w.fill(pLineBlankLen, ' ');
-}
-
 // Write a "c" line
 static void writeMafLineC(std::vector<char> &cLine,
 			  const std::vector<double> &counts) {
@@ -297,13 +289,12 @@ static void writeMafLineC(std::vector<char> &cLine,
 
 AlignmentText Alignment::writeMaf(const MultiSequence& seq1,
 				  const MultiSequence& seq2,
-				  size_t seqNum2, char strand,
-				  const uchar* seqData2,
+				  size_t seqNum2, const uchar* seqData2,
 				  bool isTranslated, const Alphabet& alph,
 				  const LastEvaluer& evaluer,
 				  const AlignmentExtras& extras) const {
   double fullScore = extras.fullScore;
-  const std::vector<uchar>& columnAmbiguityCodes = extras.columnAmbiguityCodes;
+  const std::vector<char>& columnAmbiguityCodes = extras.columnAmbiguityCodes;
 
   size_t alnBeg1 = beg1();
   size_t alnEnd1 = end1();
@@ -323,7 +314,9 @@ AlignmentText Alignment::writeMaf(const MultiSequence& seq1,
   size_t aLineLen = aLineEnd - aLine;
 
   const std::string n1 = seq1.seqName(seqNum1);
+  char strand1 = seq1.strand(seqNum1);
   const std::string n2 = seq2.seqName(seqNum2);
+  char strand2 = seq2.strand(seqNum2);
   IntText b1(alnBeg1 - seqStart1);
   IntText b2(alnBeg2 - seqStart2);
   IntText r1(alnEnd1 - alnBeg1);
@@ -356,7 +349,7 @@ AlignmentText Alignment::writeMaf(const MultiSequence& seq1,
 
   char *dest = std::copy(aLine, aLineEnd, text);
 
-  writeMafHeadS(dest, n1, nw, b1, bw, r1, rw, '+', s1, sw);
+  writeMafHeadS(dest, n1, nw, b1, bw, r1, rw, strand1, s1, sw);
   dest = writeTopSeq(seq1.seqReader(), alph, 0, frameSize2, dest + headLen);
   *dest++ = '\n';
 
@@ -367,7 +360,7 @@ AlignmentText Alignment::writeMaf(const MultiSequence& seq1,
     *dest++ = '\n';
   }
 
-  writeMafHeadS(dest, n2, nw, b2, bw, r2, rw, strand, s2, sw);
+  writeMafHeadS(dest, n2, nw, b2, bw, r2, rw, strand2, s2, sw);
   dest = writeBotSeq(seqData2, alph, 0, frameSize2, dest + headLen);
   *dest++ = '\n';
 
@@ -379,25 +372,25 @@ AlignmentText Alignment::writeMaf(const MultiSequence& seq1,
     *dest++ = '\n';
   }
 
+  Writer w(dest);
+
   if (!columnAmbiguityCodes.empty()) {
-    writeMafHeadP(dest, pLineBlankLen);
-    dest = copy(columnAmbiguityCodes.begin(),
-		columnAmbiguityCodes.end(), dest + headLen);
-    *dest++ = '\n';
+    w << 'p' << ' ';
+    w.fill(pLineBlankLen, ' ');
+    w.copy(&columnAmbiguityCodes[0], columnAmbiguityCodes.size());
+    w << '\n';
   }
 
-  dest = copy(cLine.begin(), cLine.end(), dest);
+  if (!cLine.empty()) w.copy(&cLine[0], cLine.size());
 
-  *dest++ = '\n';  // blank line afterwards
-  *dest++ = '\0';
+  w << '\n' << '\0';  // blank line afterwards
 
-  return AlignmentText(seqNum2, alnBeg2, alnEnd2, strand, score, 0, 0, text);
+  return AlignmentText(seqNum2, alnBeg2, alnEnd2, strand2, score, 0, 0, text);
 }
 
 AlignmentText Alignment::writeBlastTab(const MultiSequence& seq1,
 				       const MultiSequence& seq2,
-				       size_t seqNum2, char strand,
-				       const uchar* seqData2,
+				       size_t seqNum2, const uchar* seqData2,
 				       bool isTranslated, const Alphabet& alph,
 				       const LastEvaluer& evaluer,
 				       bool isExtraColumns) const {
@@ -406,6 +399,7 @@ AlignmentText Alignment::writeBlastTab(const MultiSequence& seq1,
   size_t seqNum1 = seq1.whichSequence(alnBeg1);
   size_t seqStart1 = seq1.seqBeg(seqNum1);
   size_t seqLen1 = seq1.seqLen(seqNum1);
+  char strand1 = seq1.strand(seqNum1);
 
   size_t size2 = seq2.padLen(seqNum2);
   size_t frameSize2 = isTranslated ? (size2 / 3) : 0;
@@ -413,6 +407,7 @@ AlignmentText Alignment::writeBlastTab(const MultiSequence& seq1,
   size_t alnEnd2 = aaToDna( end2(), frameSize2 );
   size_t seqStart2 = seq2.seqBeg(seqNum2) - seq2.padBeg(seqNum2);
   size_t seqLen2 = seq2.seqLen(seqNum2);
+  char strand2 = seq2.strand(seqNum2);
 
   size_t alnSize = numColumns( frameSize2 );
   size_t matches = matchCount( blocks, seq1.seqReader(), seqData2,
@@ -423,9 +418,14 @@ AlignmentText Alignment::writeBlastTab(const MultiSequence& seq1,
 
   size_t blastAlnBeg1 = alnBeg1 + 1;  // 1-based coordinate
   size_t blastAlnEnd1 = alnEnd1;
+  if (strand1 == '-') {
+    blastAlnBeg1 = seqStart1 + seqLen1 - alnBeg1;
+    blastAlnEnd1 = seqStart1 + seqLen1 - alnEnd1 + 1;  // 1-based coordinate
+    seqStart1 = 0;
+  }
   size_t blastAlnBeg2 = alnBeg2 + 1;  // 1-based coordinate
   size_t blastAlnEnd2 = alnEnd2;
-  if (strand == '-') {
+  if (strand2 == '-') {
     blastAlnBeg2 = size2 - alnBeg2;
     blastAlnEnd2 = size2 - alnEnd2 + 1;  // 1-based coordinate
     /*
@@ -457,12 +457,13 @@ AlignmentText Alignment::writeBlastTab(const MultiSequence& seq1,
   }
   IntText s1(seqLen1);
   IntText s2(seqLen2);
+  IntText sc(score);
 
   size_t s =
     n2.size() + n1.size() + mp.size() + as.size() + mm.size() + go.size() +
     b2.size() + e2.size() + b1.size() + e1.size() + 10;
   if (evaluer.isGood()) s += ev.size() + bs.size() + 2;
-  if (isExtraColumns)   s += s1.size() + s2.size() + 2;
+  if (isExtraColumns)   s += s1.size() + s2.size() + sc.size() + 3;
 
   char *text = new char[s + 1];
   Writer w(text);
@@ -470,10 +471,10 @@ AlignmentText Alignment::writeBlastTab(const MultiSequence& seq1,
   w << n2 << t << n1 << t << mp << t << as << t << mm << t << go << t
     << b2 << t << e2 << t << b1 << t << e1;
   if (evaluer.isGood()) w << t << ev << t << bs;
-  if (isExtraColumns)   w << t << s2 << t << s1;
+  if (isExtraColumns)   w << t << s2 << t << s1 << t << sc;
   w << '\n' << '\0';
 
-  return AlignmentText(seqNum2, alnBeg2, alnEnd2, strand, score,
+  return AlignmentText(seqNum2, alnBeg2, alnEnd2, strand2, score,
 		       alnSize, matches, text);
 }
 

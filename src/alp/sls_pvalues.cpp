@@ -1213,14 +1213,14 @@ ALP_set_of_parameters &gumbel_params_)
 bool pvalues::assert_Gumbel_parameters(
 const ALP_set_of_parameters &par_)//a set of Gumbel parameters
 {
-		if(par_.lambda<=0||
+		if(!(par_.lambda>0)||
 		par_.lambda_error<0||
 
 		//the parameters C and K_C are not necessary for the P-value calculation
 		//par_.C<0||
 		//par_.C_error<0||
 
-		par_.K<=0||
+		!(par_.K>0)||
 		par_.K_error<0||
 
 		par_.a_I<0||

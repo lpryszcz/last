@@ -408,11 +408,8 @@ whose query coordinates lie in those of 2 or more stronger alignments.</p>
 <p>This option can make lastal <strong>faster</strong> but <strong>less sensitive</strong>.  It
 sets the maximum score drop in alignments, in the gapped extension
 phase.  Lower values make it faster, by quitting unpromising
-extensions sooner.  The default aims at best accuracy.</p>
-<p>Unfortunately, the default is a complex function of the other
-parameters and the database size.  You can see it in the lastal header
-after &quot;x=&quot;, e.g. by running lastal with no queries.  Then try, say,
-halving it.</p>
+extensions sooner.  The default aims at best accuracy.  For example,
+use -x50% to specify 50% of the default value.</p>
 </div>
 <div class="section" id="id2">
 <h3>lastal -M</h3>

@@ -25,6 +25,7 @@ namespace cbrc{
     ExpectedCount ();
     std::ostream& write (std::ostream& os) const;
   };
+
   /**
    * (1) Forward and backward algorithm on the DP region given by Xdrop algorithm
    * (2) \gamma-centroid decoding
@@ -40,23 +41,31 @@ namespace cbrc{
                    const uchar* sequenceBeg, const uchar* qualityBeg );
     void setOutputType( int m ) { outputType = m; }
 
-    void reset( ) {
+    // start1 is the index of the first letter to look at in seq1
+    // start2 is the index of the first letter to look at in seq2
+
+    void doForwardBackwardAlgorithm(const uchar* seq1, const uchar* seq2,
+				    size_t start1, size_t start2,
+				    bool isExtendFwd,
+				    const GeneralizedAffineGapCosts& gap,
+				    int globality) {
+      seq1 += start1;
+      seq2 += start2;
+      const ExpMatrixRow *pssm = isPssm ? pssmExp2 + start2 : 0;
       numAntidiagonals = xa.numAntidiagonals();
-      bestScore = 0;
-      bestAntiDiagonal = 0;
-      bestPos1 =0;
+      scale.assign(numAntidiagonals + 2, 1.0);
+      forward(seq1, seq2, pssm, isExtendFwd, gap, globality);
+      mD.assign(numAntidiagonals + 2, 0.0);
+      mI.assign(numAntidiagonals + 2, 0.0);
+      backward(seq1, seq2, pssm, isExtendFwd, gap, globality);
     }
 
-    void forward( const uchar* seq1, const uchar* seq2,
-		  size_t start1, size_t start2, bool isForward,
-		  int globality, const GeneralizedAffineGapCosts& gap );
-
-    void backward( const uchar* seq1, const uchar* seq2,
-		   size_t start1, size_t start2, bool isForward,
-		   int globality, const GeneralizedAffineGapCosts& gap );
-
     double dp( double gamma );
-    void traceback( std::vector< SegmentPair >& chunks, double gamma ) const;
+
+    void traceback(std::vector<SegmentPair> &chunks, double gamma) const {
+      if (outputType==5) traceback_centroid(chunks, gamma);
+      if (outputType==6) traceback_ama(chunks, gamma);
+    }
 
     double dp_centroid( double gamma );
     void traceback_centroid( std::vector< SegmentPair >& chunks, double gamma ) const;
@@ -64,23 +73,23 @@ namespace cbrc{
     double dp_ama( double gamma );
     void traceback_ama( std::vector< SegmentPair >& chunks, double gamma ) const;
 
-    void getMatchAmbiguities(std::vector<uchar>& ambiguityCodes,
+    void getMatchAmbiguities(std::vector<char>& ambiguityCodes,
 			     size_t seq1end, size_t seq2end,
 			     size_t length) const;
 
-    void getDeleteAmbiguities(std::vector<uchar>& ambiguityCodes,
+    void getDeleteAmbiguities(std::vector<char>& ambiguityCodes,
 			      size_t seq1end, size_t seq1beg) const;
 
-    void getInsertAmbiguities(std::vector<uchar>& ambiguityCodes,
+    void getInsertAmbiguities(std::vector<char>& ambiguityCodes,
 			      size_t seq2end, size_t seq2beg) const;
 
     double logPartitionFunction() const;  // a.k.a. full score, forward score
 
     // Added by MH (2008/10/10) : compute expected counts for transitions and emissions
-    void computeExpectedCounts ( const uchar* seq1, const uchar* seq2,
-				 size_t start1, size_t start2, bool isForward,
-				 const GeneralizedAffineGapCosts& gap,
-				 ExpectedCount& count ) const;
+    void computeExpectedCounts(const uchar* seq1, const uchar* seq2,
+			       size_t start1, size_t start2, bool isExtendFwd,
+			       const GeneralizedAffineGapCosts& gap,
+			       ExpectedCount& count) const;
 
   private:
     typedef double ExpMatrixRow[scoreMatrixRowSize];
@@ -119,23 +128,29 @@ namespace cbrc{
     size_t bestAntiDiagonal;
     size_t bestPos1;
 
+    void forward(const uchar* seq1, const uchar* seq2,
+		 const ExpMatrixRow* pssm, bool isExtendFwd,
+		 const GeneralizedAffineGapCosts& gap, int globality);
+
+    void backward(const uchar* seq1, const uchar* seq2,
+		  const ExpMatrixRow* pssm, bool isExtendFwd,
+		  const GeneralizedAffineGapCosts& gap, int globality);
+
     void initForwardMatrix();
     void initBackwardMatrix();
-    void initDecodingMatrix();
 
-    void updateScore( double score, size_t antiDiagonal, size_t cur );
+    void updateScore(double score, size_t antiDiagonal, size_t cur) {
+      if (bestScore < score) {
+	bestScore = score;
+	bestAntiDiagonal = antiDiagonal;
+	bestPos1 = cur;
+      }
+    }
 
     // start of the x-drop region (i.e. number of skipped seq1 letters
     // before the x-drop region) for this antidiagonal
     size_t seq1start( size_t antidiagonal ) const {
       return xa.scoreEndIndex( antidiagonal ) - xa.scoreOrigin( antidiagonal );
-    }
-
-    // get a pointer into a sequence, taking start and direction into account
-    template < typename T >
-    static const T* seqPtr( const T* seq, bool isForward, size_t pos ){
-      if( isForward ) return seq + pos;
-      else            return seq - pos - 1;
     }
   };
 

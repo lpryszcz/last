@@ -13,9 +13,10 @@ writes several files whose names begin with ``humanDb``.  The lastal
 command reads files called ``dna*.fasta``, compares them to
 ``humanDb``, and writes alignments to a file called ``myalns.maf``.
 
-You can also pipe query sequences into lastal, for example::
+You can use gzip (.gz) compressed query files.  You can also pipe
+query sequences into lastal, for example::
 
-  zcat seqs.fasta.gz | lastal humanDb > myalns.maf
+  bzcat seqs.fasta.bz2 | lastal humanDb > myalns.maf
 
 Steps in lastal
 ---------------
@@ -93,9 +94,10 @@ Cosmetic options
       LAST programs cannot read this format.  *Warning:* `"bit score"
       is not the same as "score" <last-evalues.html>`_.
 
-      **BlastTab+** format is the same as BlastTab, with 2 extra
-      columns at the end: length of query sequence and length of
-      reference sequence.  More columns might be added in future.
+      **BlastTab+** format is the same as BlastTab, with 3 extra
+      columns at the end: length of query sequence, length of
+      reference sequence, and (raw) score.  More columns might be
+      added in future.
 
       For backwards compatibility, a NAME of 0 means TAB and 1 means
       MAF.
@@ -184,6 +186,10 @@ Score options
       forbidden from having any internal region with score < -DROP.
       This serves two purposes: accuracy (avoid spurious internal
       regions in alignments) and speed (the smaller the faster).
+
+      You can specify either a score (e.g. -x20), or a percentage; for
+      example, -x50% specifies 50% of the default value (rounded down
+      to the nearest integer).
 
   -y DROP
       Maximum score drop for gapless alignments.

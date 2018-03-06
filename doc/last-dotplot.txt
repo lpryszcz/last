@@ -2,8 +2,9 @@ last-dotplot
 ============
 
 This script makes a dotplot, a.k.a. Oxford Grid, of pair-wise sequence
-alignments in MAF or LAST tabular format.  It requires the Python
-Imaging Library to be installed.  It can be used like this::
+alignments in MAF or LAST tabular format.  It requires the `Python
+Imaging Library <https://pillow.readthedocs.io/>`_ to be installed.
+It can be used like this::
 
   last-dotplot my-alignments my-plot.png
 
@@ -11,12 +12,12 @@ The output can be in any format supported by the Imaging Library::
 
   last-dotplot alns alns.gif
 
-To get a nicer font, try something like::
+Terminology
+-----------
 
-  last-dotplot -f /usr/share/fonts/truetype/freefont/FreeSans.ttf alns alns.png
-
-If the fonts are located somewhere different on your computer, change
-this as appropriate.
+last-dotplot shows alignments of one set of sequences against another
+set of sequences.  This document calls a "set of sequences" a
+"genome", though it need not actually be a genome.
 
 Choosing sequences
 ------------------
@@ -54,11 +55,21 @@ You can also specify a sequence range; for example this gets the first
 
   last-dotplot -1 chr9:0-1000 alns alns.png
 
+Fonts
+-----
+
+last-dotplot tries to find a nice font on your computer, but may fail
+and use an ugly font.  You can specify a font like this::
+
+  last-dotplot -f /usr/share/fonts/liberation/LiberationSans-Regular.ttf alns alns.png
+
 Options
 -------
 
   -h, --help
       Show a help message, with default option values, and exit.
+  -v, --verbose
+      Show progress messages & data about the plot.
   -1 PATTERN, --seq1=PATTERN
       Which sequences to show from the 1st (horizontal) genome.
   -2 PATTERN, --seq2=PATTERN
@@ -71,29 +82,54 @@ Options
       Color for forward alignments.
   -r COLOR, --reversecolor=COLOR
       Color for reverse alignments.
+  --alignments=FILE
+      Read secondary alignments.  For example: we could use primary
+      alignment data with one human DNA read aligned to the human
+      genome, and secondary alignment data with the whole chimpanzee
+      versus human genomes.  last-dotplot will show the parts of the
+      secondary alignments that are near the primary alignments.
   --sort1=N
       Put the 1st genome's sequences left-to-right in order of: their
-      appearance in the input (0), their names (1), their lengths (2).
+      appearance in the input (0), their names (1), their lengths (2),
+      the top-to-bottom order of (the midpoints of) their alignments
+      (3).  You can use two colon-separated values, e.g. "2:1" to
+      specify 2 for primary and 1 for secondary alignments.
   --sort2=N
       Put the 2nd genome's sequences top-to-bottom in order of: their
-      appearance in the input (0), their names (1), their lengths (2).
-  --trim1
-      Trim unaligned sequence flanks from the 1st (horizontal) genome.
-  --trim2
-      Trim unaligned sequence flanks from the 2nd (vertical) genome.
+      appearance in the input (0), their names (1), their lengths (2),
+      the left-to-right order of (the midpoints of) their alignments
+      (3).
+  --strands1=N
+      Put the 1st genome's sequences: in forwards orientation (0), in
+      the orientation of most of their aligned bases (1).  In the
+      latter case, the labels will be colored (in the same way as the
+      alignments) to indicate the sequences' orientations.  You can
+      use two colon-separated values for primary and secondary
+      alignments.
+  --strands2=N
+      Put the 2nd genome's sequences: in forwards orientation (0), in
+      the orientation of most of their aligned bases (1).
+  --max-gap1=FRAC
+      Maximum unaligned gap in the 1st genome.  For example, if two
+      parts of one DNA read align to widely-separated parts of one
+      chromosome, it's probably best to cut the intervening region
+      from the dotplot.  FRAC is a fraction of the length of the
+      (primary) alignments.  You can specify "inf" to keep all
+      unaligned gaps.  You can use two comma-separated values,
+      e.g. "0.5,3" to specify 0.5 for end-gaps (unaligned sequence
+      ends) and 3 for mid-gaps (between alignments).  You can use two
+      colon-separated values (each of which may be comma-separated)
+      for primary and secondary alignments.
+  --max-gap2=FRAC
+      Maximum unaligned gap in the 2nd genome.
+  --pad=FRAC
+      Length of pad to leave when cutting unaligned gaps.
   --border-pixels=INT
       Number of pixels between sequences.
   --border-color=COLOR
       Color for pixels between sequences.
-  --bed1=FILE
-      Read `BED-format
-      <https://genome.ucsc.edu/FAQ/FAQformat.html#format1>`_
-      annotations for the 1st genome.  They are drawn as rectangles,
-      with coordinates given by the first three BED fields.  The color
-      is specified by the RGB field if present, else pale red if the
-      strand is "+", pale blue if "-", or pale purple.
-  --bed2=FILE
-      Read BED-format annotations for the 2nd genome.
+  --margin-color=COLOR
+      Color for the margins.
 
 Text options
 ~~~~~~~~~~~~
@@ -102,10 +138,56 @@ Text options
       TrueType or OpenType font file.
   -s SIZE, --fontsize=SIZE
       TrueType or OpenType font size.
-  --lengths1
-      Show sequence lengths for the 1st (horizontal) genome.
-  --lengths2
-      Show sequence lengths for the 2nd (vertical) genome.
+  --labels1=N
+      Label the displayed regions of the 1st genome with their:
+      sequence name (0), name:length (1), name:start:length (2),
+      name:start-end (3).
+  --labels2=N
+      Label the displayed regions of the 2nd genome with their:
+      sequence name (0), name:length (1), name:start:length (2),
+      name:start-end (3).
+  --rot1=ROT
+      Text rotation for the 1st genome: h(orizontal) or v(ertical).
+  --rot2=ROT
+      Text rotation for the 2nd genome: h(orizontal) or v(ertical).
+
+Annotation options
+~~~~~~~~~~~~~~~~~~
+
+These options read annotations of sequence segments, and draw them as
+colored horizontal or vertical stripes.  This looks good only if the
+annotations are reasonably sparse: e.g. you can't sensibly view 20000
+gene annotations in one small dotplot.
+
+  --bed1=FILE
+      Read `BED-format
+      <https://genome.ucsc.edu/FAQ/FAQformat.html#format1>`_
+      annotations for the 1st genome.  They are drawn as stripes, with
+      coordinates given by the first three BED fields.  The color is
+      specified by the RGB field if present, else pale red if the
+      strand is "+", pale blue if "-", or pale purple.
+  --bed2=FILE
+      Read BED-format annotations for the 2nd genome.
+  --rmsk1=FILE
+      Read repeat annotations for the 1st genome, in RepeatMasker .out
+      or rmsk.txt format.  The color is pale purple for "low
+      complexity" and "simple repeats", else pale red for "+" strand
+      and pale blue for "-" strand.
+  --rmsk2=FILE
+      Read repeat annotations for the 2nd genome.
+
+Gene options
+~~~~~~~~~~~~
+
+  --genePred1=FILE
+      Read gene annotations for the 1st genome in `genePred format
+      <https://genome.ucsc.edu/FAQ/FAQformat.html#format9>`_.
+  --genePred2=FILE
+      Read gene annotations for the 2nd genome.
+  --exon-color=COLOR
+      Color for exons.
+  --cds-color=COLOR
+      Color for protein-coding regions.
 
 Unsequenced gap options
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -124,3 +206,9 @@ of unknown sequence.
 
 An unsequenced gap will be shown only if it covers at least one whole
 pixel.
+
+Colors
+------
+
+Colors can be specified in `various ways described here
+<http://effbot.org/imagingbook/imagecolor.htm>`_.

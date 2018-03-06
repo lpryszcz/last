@@ -102,7 +102,7 @@ research to society.
 
 12. `Training alignment parameters for arbitrary sequencers with
     LAST-TRAIN`__.  Hamada M, Ono Y, Asai K Frith MC.
-    Bioinformatics.
+    Bioinformatics. 2017 33(6):926-928.
 
     __ https://academic.oup.com/bioinformatics/article-lookup/doi/10.1093/bioinformatics/btw742
 

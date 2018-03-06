@@ -21,9 +21,10 @@ like this::
   >My2ndSequence
   TTTAGAGGGTTCTTCGGGATT
 
-You can also pipe sequences into lastdb, for example::
+These files may be compressed in gzip (.gz) format.  You can also pipe
+sequences into lastdb, for example::
 
-  zcat humanChromosome*.fasta.gz | lastdb humanDb
+  bzcat humanChromosome*.fasta.bz2 | lastdb humanDb
 
 Options
 -------
@@ -128,8 +129,7 @@ Advanced Options
   -P THREADS
       Divide the work between this number of threads running in
       parallel.  0 means use as many threads as your computer claims
-      it can handle simultaneously.  Currently, multi-threading is
-      used for tantan masking only.
+      it can handle simultaneously.
 
   -m PATTERN
       Specify a spaced seed pattern, for example "-m 110101".  In this
@@ -160,7 +160,8 @@ Advanced Options
       is equivalent to "-a ACDEFGHIKLMNPQRSTVWY".  Non-alphabet
       letters are allowed in sequences, but by default they are
       excluded from initial matches and get the mismatch score when
-      aligned to anything.  If -a is specified, -p is ignored.
+      aligned to anything.  As a special case, for the DNA alphabet,
+      Us are converted to Ts.  If -a is specified, -p is ignored.
 
   -i MATCHES
       This option makes lastdb faster, at the expense of limiting your

@@ -1,9 +1,9 @@
 maf-convert
 ===========
 
-This script reads alignments in maf format, and writes them in another
-format.  It can write them in these formats: axt, blast, blasttab,
-html, psl, sam, tab.  You can use it like this::
+This script reads alignments in maf_ format, and writes them in
+another format.  It can write them in these formats: axt_, blast,
+blasttab, chain_, html, psl_, sam, tab.  You can use it like this::
 
   maf-convert psl my-alignments.maf > my-alignments.psl
 
@@ -11,15 +11,17 @@ It's often convenient to pipe in the input, like this::
 
   ... | maf-convert psl > my-alignments.psl
 
-The input should be "multiple alignment format" as described in the
-UCSC Genome FAQ (not "MIRA assembly format" or any other maf).
-
-This script takes the first (topmost) MAF sequence as the "reference"
+This script takes the first (topmost) maf sequence as the "reference"
 / "subject" / "target", and the second sequence as the "query".
 
 For html: if the input includes probability lines starting with 'p',
 then the output will be coloured by column probability.  (To get lines
 starting with 'p', run lastal with option -j set to 4 or higher.)
+
+.. _maf: http://genome.ucsc.edu/FAQ/FAQformat.html#format5
+.. _axt: https://genome.ucsc.edu/goldenPath/help/axt.html
+.. _chain: https://genome.ucsc.edu/goldenPath/help/chain.html
+.. _psl: https://genome.ucsc.edu/FAQ/FAQformat.html#format2
 
 Options
 -------
@@ -32,7 +34,7 @@ Options
          nucleotides.  This affects psl format only (the first 4
          columns).
 
-  -j, --join=N
+  -j N, --join=N
          Join neighboring alignments if they are co-linear and
          separated by at most N letters.  This affects psl format
          only.

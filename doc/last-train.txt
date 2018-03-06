@@ -15,14 +15,20 @@ The usage is like this::
   last-train mydb queries.fasta
 
 last-train prints a summary of each alignment step, followed by the
-final score parameters in a format that can be read by `lastal's -p
+final score parameters, in a format that can be read by `lastal's -p
 option <lastal.html#score-options>`_.
+
+You can also pipe sequences into last-train, for example::
+
+  zcat queries.fasta.gz | last-train mydb
 
 Options
 -------
 
   -h, --help
          Show a help message, with default option values, and exit.
+  -v, --verbose
+         Show more details of intermediate steps.
 
 Training options
 ~~~~~~~~~~~~~~~~
@@ -74,8 +80,14 @@ Alignment options
   -S NUMBER  Score matrix applies to forward strand of: 0=reference,
              1=query.  This matters only if the scores lack
              reverse-complement symmetry.
+  -C COUNT   Before extending gapped alignments, discard any gapless
+             alignment whose query range lies in COUNT other gapless
+             alignments with higher score-per-length.  This aims to
+             reduce run time.
   -T NUMBER  Type of alignment: 0=local, 1=overlap.
   -m COUNT   Maximum number of initial matches per query position.
+  -k STEP    Look for initial matches starting only at every STEP-th
+             position in each query.
   -P COUNT   Number of parallel threads.
   -Q NUMBER  Query sequence format: 0=fasta, 1=fastq-sanger.
              **Important:** if you use option -Q, last-train will only

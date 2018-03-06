@@ -6,26 +6,15 @@
 #include <cctype>  // toupper
 #include <limits>  // numeric_limits
 
-// make C++ tolerable:
-#define CI(type) std::vector<type>::const_iterator
-
 #define ERR(x) throw std::runtime_error(x)
 
 using namespace cbrc;
 
 std::istream&
 MultiSequence::appendFromFastq( std::istream& stream, indexT maxSeqLen ){
-  const uchar padQualityScore = 64;  // should never be used, but a valid value
-
   // initForAppending:
   qualityScoresPerLetter = 1;
-  if( qualityScores.v.empty() )
-    qualityScores.v.insert( qualityScores.v.end(), padSize, padQualityScore );
-
-  // reinitForAppending:
-  if( qualityScores.v.size() > seq.v.size() )
-    qualityScores.v.erase( qualityScores.v.begin(),
-                           qualityScores.v.end() - seq.v.size() );
+  if( qualityScores.v.empty() ) appendQualPad();
 
   if( isFinished() ){
     uchar c = '@';
@@ -49,9 +38,9 @@ MultiSequence::appendFromFastq( std::istream& stream, indexT maxSeqLen ){
     if( seq.v.size() != qualityScores.v.size() ) ERR( "bad FASTQ data" );
   }
 
-  if( isFinishable(maxSeqLen) ){
+  if (isRoomToAppendPad(maxSeqLen)) {
     finish();
-    qualityScores.v.insert( qualityScores.v.end(), padSize, padQualityScore );
+    appendQualPad();
   }
 
   return stream;
@@ -60,20 +49,9 @@ MultiSequence::appendFromFastq( std::istream& stream, indexT maxSeqLen ){
 std::istream&
 MultiSequence::appendFromPrb( std::istream& stream, indexT maxSeqLen,
 			      unsigned alphSize, const uchar decode[] ){
-  const uchar padQualityScore = 64;  // should never be used, but a valid value
-  size_t qualPadSize = padSize * alphSize;
-  size_t qualSize = seq.v.size() * alphSize;
-
   // initForAppending:
   qualityScoresPerLetter = alphSize;
-  if( qualityScores.v.empty() )
-    qualityScores.v.insert( qualityScores.v.end(), qualPadSize,
-                            padQualityScore );
-
-  // reinitForAppending:
-  if( qualityScores.v.size() > qualSize )
-    qualityScores.v.erase( qualityScores.v.begin(),
-                           qualityScores.v.end() - qualSize );
+  if( qualityScores.v.empty() ) appendQualPad();
 
   if( isFinished() ){
     std::string line;
@@ -85,6 +63,8 @@ MultiSequence::appendFromPrb( std::istream& stream, indexT maxSeqLen,
     std::string name = stringify( ++lineCount );
     addName(name);
 
+    size_t oldSize = qualityScores.v.size();
+
     std::istringstream iss(line);
     int q;
     while( iss >> q ){
@@ -93,19 +73,19 @@ MultiSequence::appendFromPrb( std::istream& stream, indexT maxSeqLen,
       qualityScores.v.push_back( q + 64 );  // ASCII-encode the quality score
     }
 
-    if( qualityScores.v.size() % alphSize != 0 ) ERR( "bad PRB data" );
+    size_t newSize = qualityScores.v.size();
+    if (newSize % qualityScoresPerLetter != 0) ERR("bad PRB data");
 
-    for( CI(uchar) i = qualityScores.v.begin() + qualSize;
-	 i < qualityScores.v.end(); i += alphSize ){
-      unsigned maxIndex = std::max_element( i, i + alphSize ) - i;
+    for (size_t i = oldSize; i < newSize; i += qualityScoresPerLetter) {
+      const uchar *q = &qualityScores.v[i];
+      unsigned maxIndex = std::max_element(q, q + qualityScoresPerLetter) - q;
       seq.v.push_back( decode[ maxIndex ] );
     }
   }
 
-  if( isFinishable(maxSeqLen) ){
+  if (isRoomToAppendPad(maxSeqLen)) {
     finish();
-    qualityScores.v.insert( qualityScores.v.end(), qualPadSize,
-                            padQualityScore );
+    appendQualPad();
   }
 
   return stream;
@@ -126,7 +106,8 @@ std::istream& MultiSequence::readPssmHeader( std::istream& stream ){
 
     while( iss >> word ){
       if( word.size() == 1 ){
-        uchar letter = std::toupper( word[0] );
+	uchar c = word[0];
+        uchar letter = std::toupper(c);
         // allow for PSI-BLAST format, with repeated letters:
         if( pssmColumnLetters.size() && pssmColumnLetters[0] == letter ) break;
         pssmColumnLetters.push_back(letter);
@@ -148,16 +129,8 @@ std::istream&
 MultiSequence::appendFromPssm( std::istream& stream, indexT maxSeqLen,
                                const uchar* lettersToNumbers,
                                bool isMaskLowercase ){
-  size_t pssmPadSize = padSize * scoreMatrixRowSize;
-  size_t pssmSize = seq.v.size() * scoreMatrixRowSize;
-
   // initForAppending:
-  if( pssm.empty() )
-    pssm.insert( pssm.end(), pssmPadSize, -INF );
-
-  // reinitForAppending:
-  if( pssm.size() > pssmSize )
-    pssm.erase( pssm.begin(), pssm.end() - pssmSize );
+  if( pssm.empty() ) appendPssmPad();
 
   if( isFinished() ){
     readPssmHeader(stream);
@@ -191,16 +164,17 @@ MultiSequence::appendFromPssm( std::istream& stream, indexT maxSeqLen,
       if( isMaskLowercase ) scores[i] = std::min(scores[i], 0);
       if( maskColumn != column ) row[maskColumn] = scores[i];
     }
-    unsigned delimiterColumn = lettersToNumbers[' '];
+    uchar delimiter = ' ';
+    unsigned delimiterColumn = lettersToNumbers[delimiter];
     assert( delimiterColumn < scoreMatrixRowSize );
     row[delimiterColumn] = -INF;
 
     stream.ignore( std::numeric_limits<std::streamsize>::max(), '\n' );
   }
 
-  if( isFinishable(maxSeqLen) ){
+  if (isRoomToAppendPad(maxSeqLen)) {
     finish();
-    pssm.insert( pssm.end(), pssmPadSize, -INF );
+    appendPssmPad();
   }
 
   if( !stream.bad() ) stream.clear();

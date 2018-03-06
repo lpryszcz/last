@@ -2,11 +2,12 @@
 
 // BLAST-like pair-wise sequence alignment, using suffix arrays.
 
+#include "last.hh"
+
 #include "LastalArguments.hh"
 #include "QualityPssmMaker.hh"
 #include "OneQualityScoreMatrix.hh"
 #include "TwoQualityScoreMatrix.hh"
-#include "qualityScoreUtil.hh"
 #include "LambdaCalculator.hh"
 #include "LastEvaluer.hh"
 #include "GeneticCode.hh"
@@ -18,8 +19,6 @@
 #include "SegmentPairPot.hh"
 #include "SegmentPair.hh"
 #include "ScoreMatrix.hh"
-#include "Alphabet.hh"
-#include "MultiSequence.hh"
 #include "TantanMasker.hh"
 #include "DiagonalTable.hh"
 #include "GeneralizedAffineGapCosts.hh"
@@ -27,7 +26,7 @@
 #include "gaplessXdrop.hh"
 #include "gaplessPssmXdrop.hh"
 #include "gaplessTwoQualityXdrop.hh"
-#include "io.hh"
+#include "zio.hh"
 #include "stringify.hh"
 #include "threadUtil.hh"
 #include <iomanip>  // setw
@@ -54,7 +53,6 @@ struct LastAligner {  // data that changes between queries
 };
 
 namespace {
-  typedef MultiSequence::indexT indexT;
   typedef unsigned long long countT;
 
   LastalArguments args;
@@ -280,13 +278,12 @@ void calculateScoreStatistics( const std::string& matrixName,
                   p1, p2, isGapped,
                   gapCosts.delExist, gapCosts.delExtend,
                   gapCosts.insExist, gapCosts.insExtend,
-                  args.frameshiftCost, geneticCode, isStandardGeneticCode );
+                  args.frameshiftCost, geneticCode, isStandardGeneticCode,
+		  args.verbosity );
     evaluer.setSearchSpace( refLetters, args.numOfStrands() );
     if( args.verbosity > 0 ) evaluer.writeParameters( std::cerr );
   }catch( const Sls::error& e ){
     LOG( "can't get E-value parameters for this scoring scheme" );
-    if( args.verbosity > 1 )
-      std::cerr << "ALP: " << e.error_code << ": " << e.st;
   }
 }
 
@@ -526,9 +523,9 @@ static void printAndDelete(char *text) {
 }
 
 static void writeAlignment(LastAligner &aligner, const Alignment &aln,
-			   size_t queryNum, char strand, const uchar* querySeq,
+			   size_t queryNum, const uchar* querySeq,
 			   const AlignmentExtras &extras = AlignmentExtras()) {
-  AlignmentText a = aln.write(text, query, queryNum, strand, querySeq,
+  AlignmentText a = aln.write(text, query, queryNum, querySeq,
 			      args.isTranslated(), alph, evaluer,
 			      args.outputFormat, extras);
   if (isCollatedAlignments() || aligners.size() > 1)
@@ -538,11 +535,10 @@ static void writeAlignment(LastAligner &aligner, const Alignment &aln,
 }
 
 static void writeSegmentPair(LastAligner &aligner, const SegmentPair &s,
-			     size_t queryNum, char strand,
-			     const uchar* querySeq) {
+			     size_t queryNum, const uchar* querySeq) {
   Alignment a;
   a.fromSegmentPair(s);
-  writeAlignment(aligner, a, queryNum, strand, querySeq);
+  writeAlignment(aligner, a, queryNum, querySeq);
 }
 
 // Find query matches to the suffix array, and do gapless extensions
@@ -597,7 +593,7 @@ void alignGapless( LastAligner& aligner, SegmentPairPot& gaplessAlns,
 	  if( score < minScoreGapless ) continue;
 	  SegmentPair sp( j - revLen, i - revLen, revLen + fwdLen, score );
 	  dt.addEndpoint( sp.end2(), sp.end1() );
-	  writeSegmentPair( aligner, sp, queryNum, strand, querySeq );
+	  writeSegmentPair( aligner, sp, queryNum, querySeq );
 	}else{
 	  int fs = dis.forwardGaplessScore( j, i );
 	  int rs = dis.reverseGaplessScore( j, i );
@@ -616,7 +612,7 @@ void alignGapless( LastAligner& aligner, SegmentPairPot& gaplessAlns,
 	  dt.addEndpoint( sp.end2(), sp.end1() );
 
 	  if( args.outputType == 1 ){  // we just want gapless alignments
-	    writeSegmentPair( aligner, sp, queryNum, strand, querySeq );
+	    writeSegmentPair( aligner, sp, queryNum, querySeq );
 	  }
 	  else{
 	    gaplessAlns.add(sp);  // add the gapless alignment to the pot
@@ -747,7 +743,7 @@ void alignFinish( LastAligner& aligner, const AlignmentPot& gappedAlns,
   for( size_t i = 0; i < gappedAlns.size(); ++i ){
     const Alignment& aln = gappedAlns.items[i];
     if( args.outputType < 4 ){
-      writeAlignment( aligner, aln, queryNum, strand, querySeq );
+      writeAlignment( aligner, aln, queryNum, querySeq );
     }
     else{  // calculate match probabilities:
       Alignment probAln;
@@ -760,7 +756,7 @@ void alignFinish( LastAligner& aligner, const AlignmentPot& gappedAlns,
 			 dis.p, dis.t, dis.i, dis.j, alph, extras,
 			 args.gamma, args.outputType );
       assert( aln.score != -INF );
-      writeAlignment( aligner, probAln, queryNum, strand, querySeq, extras );
+      writeAlignment( aligner, probAln, queryNum, querySeq, extras );
     }
   }
 }
@@ -950,42 +946,16 @@ void translateAndScan( LastAligner& aligner, size_t queryNum, char strand ){
   cullFinalAlignments( aligner.textAlns, oldNumOfAlns );
 }
 
-static void reverseComplementPssm( size_t queryNum ){
-  ScoreMatrixRow* beg = query.pssmWriter() + query.seqBeg(queryNum);
-  ScoreMatrixRow* end = query.pssmWriter() + query.seqEnd(queryNum);
-
-  while( beg < end ){
-    --end;
-    for( unsigned i = 0; i < scoreMatrixRowSize; ++i ){
-      unsigned j = queryAlph.complement[i];
-      if( beg < end || i < j ) std::swap( (*beg)[i], (*end)[j] );
-    }
-    ++beg;
-  }
-}
-
-static void reverseComplementQuery( size_t queryNum ){
-  size_t b = query.seqBeg(queryNum);
-  size_t e = query.seqEnd(queryNum);
-  queryAlph.rc( query.seqWriter() + b, query.seqWriter() + e );
-  if( isQuality( args.inputFormat ) ){
-    std::reverse( query.qualityWriter() + b * query.qualsPerLetter(),
-		  query.qualityWriter() + e * query.qualsPerLetter() );
-  }else if( args.inputFormat == sequenceFormat::pssm ){
-    reverseComplementPssm(queryNum);
-  }
-}
-
 static void alignOneQuery(LastAligner &aligner,
 			  size_t queryNum, bool isFirstVolume) {
   if (args.strand == 2 && !isFirstVolume)
-    reverseComplementQuery(queryNum);
+    query.reverseComplementOneSequence(queryNum, queryAlph.complement);
 
   if (args.strand != 0)
     translateAndScan(aligner, queryNum, '+');
 
   if (args.strand == 2 || (args.strand == 0 && isFirstVolume))
-    reverseComplementQuery(queryNum);
+    query.reverseComplementOneSequence(queryNum, queryAlph.complement);
 
   if (args.strand != 1)
     translateAndScan(aligner, queryNum, '-');
@@ -1124,40 +1094,6 @@ void writeHeader( countT refSequences, countT refLetters, std::ostream& out ){
   }
 }
 
-// Read the next sequence, adding it to the MultiSequence
-std::istream& appendFromFasta( std::istream& in ){
-  indexT maxSeqLen = args.batchSize;
-  if( maxSeqLen < args.batchSize ) maxSeqLen = indexT(-1);
-  if( query.finishedSequences() == 0 ) maxSeqLen = indexT(-1);
-
-  size_t oldSize = query.unfinishedSize();
-
-  /**/ if( args.inputFormat == sequenceFormat::fasta )
-    query.appendFromFasta( in, maxSeqLen );
-  else if( args.inputFormat == sequenceFormat::prb )
-    query.appendFromPrb( in, maxSeqLen, queryAlph.size, queryAlph.decode );
-  else if( args.inputFormat == sequenceFormat::pssm )
-    query.appendFromPssm( in, maxSeqLen, queryAlph.encode,
-                          args.maskLowercase > 1 );
-  else
-    query.appendFromFastq( in, maxSeqLen );
-
-  if( !query.isFinished() && query.finishedSequences() == 0 )
-    ERR( "encountered a sequence that's too long" );
-
-  // encode the newly-read sequence
-  uchar* seq = query.seqWriter();
-  size_t newSize = query.unfinishedSize();
-  queryAlph.tr( seq + oldSize, seq + newSize, args.isKeepLowercase );
-
-  if( isPhred( args.inputFormat ) )  // assumes one quality code per letter:
-    checkQualityCodes( query.qualityReader() + oldSize,
-                       query.qualityReader() + newSize,
-                       qualityOffset( args.inputFormat ) );
-
-  return in;
-}
-
 void lastal( int argc, char** argv ){
   args.fromArgs( argc, argv );
   args.resetCumulativeOptions();  // because we will do fromArgs again
@@ -1235,8 +1171,7 @@ void lastal( int argc, char** argv ){
   if( !isMultiVolume ) args.minScoreGapless = minScoreGapless;
   if( args.outputType > 0 ) makeQualityScorers();
 
-  queryAlph.tr( query.seqWriter(),
-                query.seqWriter() + query.unfinishedSize() );
+  queryAlph.tr(query.seqWriter(), query.seqWriter() + query.seqBeg(0));
 
   if( volumes+1 == 0 ) readIndex( args.lastdbName, refSequences );
 
@@ -1245,17 +1180,20 @@ void lastal( int argc, char** argv ){
   out.precision(3);  // print non-integers more compactly
   countT queryBatchCount = 0;
   countT sequenceCount = 0;
+  indexT maxSeqLen = args.batchSize;
+  if (maxSeqLen < args.batchSize) maxSeqLen = -1;
 
   char defaultInputName[] = "-";
   char* defaultInput[] = { defaultInputName, 0 };
   char** inputBegin = argv + args.inputStart;
 
   for( char** i = *inputBegin ? inputBegin : defaultInput; *i; ++i ){
-    std::ifstream inFileStream;
+    mcf::izstream inFileStream;
     std::istream& in = openIn( *i, inFileStream );
     LOG( "reading " << *i << "..." );
 
-    while( appendFromFasta( in ) ){
+    while (appendSequence(query, in, maxSeqLen, args.inputFormat, queryAlph,
+			  args.isKeepLowercase, args.maskLowercase > 1)) {
       if( query.isFinished() ){
 	++sequenceCount;
       }else{

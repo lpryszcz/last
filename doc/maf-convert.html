@@ -318,9 +318,9 @@ table.field-list { border: thin solid green }
 <div class="document" id="maf-convert">
 <h1 class="title">maf-convert</h1>
 
-<p>This script reads alignments in maf format, and writes them in another
-format.  It can write them in these formats: axt, blast, blasttab,
-html, psl, sam, tab.  You can use it like this:</p>
+<p>This script reads alignments in <a class="reference external" href="http://genome.ucsc.edu/FAQ/FAQformat.html#format5">maf</a> format, and writes them in
+another format.  It can write them in these formats: <a class="reference external" href="https://genome.ucsc.edu/goldenPath/help/axt.html">axt</a>, blast,
+blasttab, <a class="reference external" href="https://genome.ucsc.edu/goldenPath/help/chain.html">chain</a>, html, <a class="reference external" href="https://genome.ucsc.edu/FAQ/FAQformat.html#format2">psl</a>, sam, tab.  You can use it like this:</p>
 <pre class="literal-block">
 maf-convert psl my-alignments.maf &gt; my-alignments.psl
 </pre>
@@ -328,9 +328,7 @@ maf-convert psl my-alignments.maf &gt; my-alignments.psl
 <pre class="literal-block">
 ... | maf-convert psl &gt; my-alignments.psl
 </pre>
-<p>The input should be &quot;multiple alignment format&quot; as described in the
-UCSC Genome FAQ (not &quot;MIRA assembly format&quot; or any other maf).</p>
-<p>This script takes the first (topmost) MAF sequence as the &quot;reference&quot;
+<p>This script takes the first (topmost) maf sequence as the &quot;reference&quot;
 / &quot;subject&quot; / &quot;target&quot;, and the second sequence as the &quot;query&quot;.</p>
 <p>For html: if the input includes probability lines starting with 'p',
 then the output will be coloured by column probability.  (To get lines
@@ -351,7 +349,7 @@ starting with 'p', run lastal with option -j set to 4 or higher.)</p>
 nucleotides.  This affects psl format only (the first 4
 columns).</td></tr>
 <tr><td class="option-group">
-<kbd><span class="option">-j</span>, <span class="option">--join=<var>N</var></span></kbd></td>
+<kbd><span class="option">-j <var>N</var></span>, <span class="option">--join=<var>N</var></span></kbd></td>
 <td>Join neighboring alignments if they are co-linear and
 separated by at most N letters.  This affects psl format
 only.</td></tr>

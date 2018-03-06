@@ -336,9 +336,10 @@ TTTGGATATG
 &gt;My2ndSequence
 TTTAGAGGGTTCTTCGGGATT
 </pre>
-<p>You can also pipe sequences into lastdb, for example:</p>
+<p>These files may be compressed in gzip (.gz) format.  You can also pipe
+sequences into lastdb, for example:</p>
 <pre class="literal-block">
-zcat humanChromosome*.fasta.gz | lastdb humanDb
+bzcat humanChromosome*.fasta.bz2 | lastdb humanDb
 </pre>
 </div>
 <div class="section" id="options">
@@ -460,8 +461,7 @@ lastdb and then used by lastal.  These formats are described in
 <kbd><span class="option">-P <var>THREADS</var></span></kbd></td>
 <td>Divide the work between this number of threads running in
 parallel.  0 means use as many threads as your computer claims
-it can handle simultaneously.  Currently, multi-threading is
-used for tantan masking only.</td></tr>
+it can handle simultaneously.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-m <var>PATTERN</var></span></kbd></td>
 <td><p class="first">Specify a spaced seed pattern, for example &quot;-m 110101&quot;.  In this
@@ -489,7 +489,8 @@ alphabet is equivalent to &quot;-a ACGT&quot;.  The protein alphabet (-p)
 is equivalent to &quot;-a ACDEFGHIKLMNPQRSTVWY&quot;.  Non-alphabet
 letters are allowed in sequences, but by default they are
 excluded from initial matches and get the mismatch score when
-aligned to anything.  If -a is specified, -p is ignored.</td></tr>
+aligned to anything.  As a special case, for the DNA alphabet,
+Us are converted to Ts.  If -a is specified, -p is ignored.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-i <var>MATCHES</var></span></kbd></td>
 <td>This option makes lastdb faster, at the expense of limiting your

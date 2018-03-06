@@ -61,11 +61,11 @@ try this::
 
 Instead of this::
 
-  zcat queries.fa.gz | lastal mydb > myalns.maf
+  bzcat queries.fa.bz2 | lastal mydb > myalns.maf
 
 try this::
 
-  zcat queries.fa.gz | parallel-fasta "lastal mydb" > myalns.maf
+  bzcat queries.fa.bz2 | parallel-fasta "lastal mydb" > myalns.maf
 
 Notes:
 

@@ -147,7 +147,7 @@ static void doOneAlignmentPart(cbrc::SplitAligner& sa,
   }
   std::cout << "\n" << std::setprecision(6);
 
-  if (a.qstrand == '-') cbrc::flipMafStrands(s.begin(), s.end());
+  if (a.isFlipped()) cbrc::flipMafStrands(s.begin(), s.end());
   if (opts.no_split && a.linesEnd[-1][0] == 'c') s.push_back(a.linesEnd[-1]);
   cbrc::printMaf(s);
 }

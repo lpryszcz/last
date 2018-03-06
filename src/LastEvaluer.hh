@@ -50,7 +50,8 @@ public:
 	    int insEpen,
 	    int frameshiftCost,
 	    const GeneticCode &geneticCode,
-	    bool isStandardGeneticCode);
+	    bool isStandardGeneticCode,
+	    int verbosity);
 
   void setSearchSpace(double databaseLength,  // number of database letters
 		      double numOfStrands) {  // 1 or 2

@@ -330,8 +330,12 @@ lastdb mydb reference.fasta
 last-train mydb queries.fasta
 </pre>
 <p>last-train prints a summary of each alignment step, followed by the
-final score parameters in a format that can be read by <a class="reference external" href="lastal.html#score-options">lastal's -p
+final score parameters, in a format that can be read by <a class="reference external" href="lastal.html#score-options">lastal's -p
 option</a>.</p>
+<p>You can also pipe sequences into last-train, for example:</p>
+<pre class="literal-block">
+zcat queries.fasta.gz | last-train mydb
+</pre>
 <div class="section" id="options">
 <h2>Options</h2>
 <blockquote>
@@ -342,6 +346,9 @@ option</a>.</p>
 <tr><td class="option-group">
 <kbd><span class="option">-h</span>, <span class="option">--help</span></kbd></td>
 <td>Show a help message, with default option values, and exit.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-v</span>, <span class="option">--verbose</span></kbd></td>
+<td>Show more details of intermediate steps.</td></tr>
 </tbody>
 </table>
 </blockquote>
@@ -439,11 +446,21 @@ alignments: they are described in more detail at <a class="reference external" h
 1=query.  This matters only if the scores lack
 reverse-complement symmetry.</td></tr>
 <tr><td class="option-group">
+<kbd><span class="option">-C <var>COUNT</var></span></kbd></td>
+<td>Before extending gapped alignments, discard any gapless
+alignment whose query range lies in COUNT other gapless
+alignments with higher score-per-length.  This aims to
+reduce run time.</td></tr>
+<tr><td class="option-group">
 <kbd><span class="option">-T <var>NUMBER</var></span></kbd></td>
 <td>Type of alignment: 0=local, 1=overlap.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-m <var>COUNT</var></span></kbd></td>
 <td>Maximum number of initial matches per query position.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-k <var>STEP</var></span></kbd></td>
+<td>Look for initial matches starting only at every STEP-th
+position in each query.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-P <var>COUNT</var></span></kbd></td>
 <td>Number of parallel threads.</td></tr>

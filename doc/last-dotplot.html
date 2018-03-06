@@ -319,8 +319,9 @@ table.field-list { border: thin solid green }
 <h1 class="title">last-dotplot</h1>
 
 <p>This script makes a dotplot, a.k.a. Oxford Grid, of pair-wise sequence
-alignments in MAF or LAST tabular format.  It requires the Python
-Imaging Library to be installed.  It can be used like this:</p>
+alignments in MAF or LAST tabular format.  It requires the <a class="reference external" href="https://pillow.readthedocs.io/">Python
+Imaging Library</a> to be installed.
+It can be used like this:</p>
 <pre class="literal-block">
 last-dotplot my-alignments my-plot.png
 </pre>
@@ -328,12 +329,12 @@ last-dotplot my-alignments my-plot.png
 <pre class="literal-block">
 last-dotplot alns alns.gif
 </pre>
-<p>To get a nicer font, try something like:</p>
-<pre class="literal-block">
-last-dotplot -f /usr/share/fonts/truetype/freefont/FreeSans.ttf alns alns.png
-</pre>
-<p>If the fonts are located somewhere different on your computer, change
-this as appropriate.</p>
+<div class="section" id="terminology">
+<h2>Terminology</h2>
+<p>last-dotplot shows alignments of one set of sequences against another
+set of sequences.  This document calls a &quot;set of sequences&quot; a
+&quot;genome&quot;, though it need not actually be a genome.</p>
+</div>
 <div class="section" id="choosing-sequences">
 <h2>Choosing sequences</h2>
 <p>If there are too many sequences, the dotplot will be very cluttered,
@@ -382,6 +383,14 @@ last-dotplot -1 'chr?' -1 'chr??' alns alns.png
 last-dotplot -1 chr9:0-1000 alns alns.png
 </pre>
 </div>
+<div class="section" id="fonts">
+<h2>Fonts</h2>
+<p>last-dotplot tries to find a nice font on your computer, but may fail
+and use an ugly font.  You can specify a font like this:</p>
+<pre class="literal-block">
+last-dotplot -f /usr/share/fonts/liberation/LiberationSans-Regular.ttf alns alns.png
+</pre>
+</div>
 <div class="section" id="options">
 <h2>Options</h2>
 <blockquote>
@@ -392,6 +401,9 @@ last-dotplot -1 chr9:0-1000 alns alns.png
 <tr><td class="option-group">
 <kbd><span class="option">-h</span>, <span class="option">--help</span></kbd></td>
 <td>Show a help message, with default option values, and exit.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">-v</span>, <span class="option">--verbose</span></kbd></td>
+<td>Show progress messages &amp; data about the plot.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-1 <var>PATTERN</var></span>, <span class="option">--seq1=<var>PATTERN</var></span></kbd></td>
 <td>Which sequences to show from the 1st (horizontal) genome.</td></tr>
@@ -411,19 +423,55 @@ last-dotplot -1 chr9:0-1000 alns alns.png
 <kbd><span class="option">-r <var>COLOR</var></span>, <span class="option">--reversecolor=<var>COLOR</var></span></kbd></td>
 <td>Color for reverse alignments.</td></tr>
 <tr><td class="option-group">
+<kbd><span class="option">--alignments=<var>FILE</var></span></kbd></td>
+<td>Read secondary alignments.  For example: we could use primary
+alignment data with one human DNA read aligned to the human
+genome, and secondary alignment data with the whole chimpanzee
+versus human genomes.  last-dotplot will show the parts of the
+secondary alignments that are near the primary alignments.</td></tr>
+<tr><td class="option-group">
 <kbd><span class="option">--sort1=<var>N</var></span></kbd></td>
 <td>Put the 1st genome's sequences left-to-right in order of: their
-appearance in the input (0), their names (1), their lengths (2).</td></tr>
+appearance in the input (0), their names (1), their lengths (2),
+the top-to-bottom order of (the midpoints of) their alignments
+(3).  You can use two colon-separated values, e.g. &quot;2:1&quot; to
+specify 2 for primary and 1 for secondary alignments.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">--sort2=<var>N</var></span></kbd></td>
 <td>Put the 2nd genome's sequences top-to-bottom in order of: their
-appearance in the input (0), their names (1), their lengths (2).</td></tr>
+appearance in the input (0), their names (1), their lengths (2),
+the left-to-right order of (the midpoints of) their alignments
+(3).</td></tr>
 <tr><td class="option-group">
-<kbd><span class="option">--trim1</span></kbd></td>
-<td>Trim unaligned sequence flanks from the 1st (horizontal) genome.</td></tr>
+<kbd><span class="option">--strands1=<var>N</var></span></kbd></td>
+<td>Put the 1st genome's sequences: in forwards orientation (0), in
+the orientation of most of their aligned bases (1).  In the
+latter case, the labels will be colored (in the same way as the
+alignments) to indicate the sequences' orientations.  You can
+use two colon-separated values for primary and secondary
+alignments.</td></tr>
 <tr><td class="option-group">
-<kbd><span class="option">--trim2</span></kbd></td>
-<td>Trim unaligned sequence flanks from the 2nd (vertical) genome.</td></tr>
+<kbd><span class="option">--strands2=<var>N</var></span></kbd></td>
+<td>Put the 2nd genome's sequences: in forwards orientation (0), in
+the orientation of most of their aligned bases (1).</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--max-gap1=<var>FRAC</var></span></kbd></td>
+<td>Maximum unaligned gap in the 1st genome.  For example, if two
+parts of one DNA read align to widely-separated parts of one
+chromosome, it's probably best to cut the intervening region
+from the dotplot.  FRAC is a fraction of the length of the
+(primary) alignments.  You can specify &quot;inf&quot; to keep all
+unaligned gaps.  You can use two comma-separated values,
+e.g. &quot;0.5,3&quot; to specify 0.5 for end-gaps (unaligned sequence
+ends) and 3 for mid-gaps (between alignments).  You can use two
+colon-separated values (each of which may be comma-separated)
+for primary and secondary alignments.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--max-gap2=<var>FRAC</var></span></kbd></td>
+<td>Maximum unaligned gap in the 2nd genome.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--pad=<var>FRAC</var></span></kbd></td>
+<td>Length of pad to leave when cutting unaligned gaps.</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">--border-pixels=<var>INT</var></span></kbd></td>
 <td>Number of pixels between sequences.</td></tr>
@@ -431,15 +479,8 @@ appearance in the input (0), their names (1), their lengths (2).</td></tr>
 <kbd><span class="option">--border-color=<var>COLOR</var></span></kbd></td>
 <td>Color for pixels between sequences.</td></tr>
 <tr><td class="option-group">
-<kbd><span class="option">--bed1=<var>FILE</var></span></kbd></td>
-<td>Read <a class="reference external" href="https://genome.ucsc.edu/FAQ/FAQformat.html#format1">BED-format</a>
-annotations for the 1st genome.  They are drawn as rectangles,
-with coordinates given by the first three BED fields.  The color
-is specified by the RGB field if present, else pale red if the
-strand is &quot;+&quot;, pale blue if &quot;-&quot;, or pale purple.</td></tr>
-<tr><td class="option-group">
-<kbd><span class="option">--bed2=<var>FILE</var></span></kbd></td>
-<td>Read BED-format annotations for the 2nd genome.</td></tr>
+<kbd><span class="option">--margin-color=<var>COLOR</var></span></kbd></td>
+<td>Color for the margins.</td></tr>
 </tbody>
 </table>
 </blockquote>
@@ -457,11 +498,78 @@ strand is &quot;+&quot;, pale blue if &quot;-&quot;, or pale purple.</td></tr>
 <kbd><span class="option">-s <var>SIZE</var></span>, <span class="option">--fontsize=<var>SIZE</var></span></kbd></td>
 <td>TrueType or OpenType font size.</td></tr>
 <tr><td class="option-group">
-<kbd><span class="option">--lengths1</span></kbd></td>
-<td>Show sequence lengths for the 1st (horizontal) genome.</td></tr>
+<kbd><span class="option">--labels1=<var>N</var></span></kbd></td>
+<td>Label the displayed regions of the 1st genome with their:
+sequence name (0), name:length (1), name:start:length (2),
+name:start-end (3).</td></tr>
 <tr><td class="option-group">
-<kbd><span class="option">--lengths2</span></kbd></td>
-<td>Show sequence lengths for the 2nd (vertical) genome.</td></tr>
+<kbd><span class="option">--labels2=<var>N</var></span></kbd></td>
+<td>Label the displayed regions of the 2nd genome with their:
+sequence name (0), name:length (1), name:start:length (2),
+name:start-end (3).</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--rot1=<var>ROT</var></span></kbd></td>
+<td>Text rotation for the 1st genome: h(orizontal) or v(ertical).</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--rot2=<var>ROT</var></span></kbd></td>
+<td>Text rotation for the 2nd genome: h(orizontal) or v(ertical).</td></tr>
+</tbody>
+</table>
+</blockquote>
+</div>
+<div class="section" id="annotation-options">
+<h3>Annotation options</h3>
+<p>These options read annotations of sequence segments, and draw them as
+colored horizontal or vertical stripes.  This looks good only if the
+annotations are reasonably sparse: e.g. you can't sensibly view 20000
+gene annotations in one small dotplot.</p>
+<blockquote>
+<table class="docutils option-list" frame="void" rules="none">
+<col class="option" />
+<col class="description" />
+<tbody valign="top">
+<tr><td class="option-group">
+<kbd><span class="option">--bed1=<var>FILE</var></span></kbd></td>
+<td>Read <a class="reference external" href="https://genome.ucsc.edu/FAQ/FAQformat.html#format1">BED-format</a>
+annotations for the 1st genome.  They are drawn as stripes, with
+coordinates given by the first three BED fields.  The color is
+specified by the RGB field if present, else pale red if the
+strand is &quot;+&quot;, pale blue if &quot;-&quot;, or pale purple.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--bed2=<var>FILE</var></span></kbd></td>
+<td>Read BED-format annotations for the 2nd genome.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--rmsk1=<var>FILE</var></span></kbd></td>
+<td>Read repeat annotations for the 1st genome, in RepeatMasker .out
+or rmsk.txt format.  The color is pale purple for &quot;low
+complexity&quot; and &quot;simple repeats&quot;, else pale red for &quot;+&quot; strand
+and pale blue for &quot;-&quot; strand.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--rmsk2=<var>FILE</var></span></kbd></td>
+<td>Read repeat annotations for the 2nd genome.</td></tr>
+</tbody>
+</table>
+</blockquote>
+</div>
+<div class="section" id="gene-options">
+<h3>Gene options</h3>
+<blockquote>
+<table class="docutils option-list" frame="void" rules="none">
+<col class="option" />
+<col class="description" />
+<tbody valign="top">
+<tr><td class="option-group">
+<kbd><span class="option">--genePred1=<var>FILE</var></span></kbd></td>
+<td>Read gene annotations for the 1st genome in <a class="reference external" href="https://genome.ucsc.edu/FAQ/FAQformat.html#format9">genePred format</a>.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--genePred2=<var>FILE</var></span></kbd></td>
+<td>Read gene annotations for the 2nd genome.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--exon-color=<var>COLOR</var></span></kbd></td>
+<td>Color for exons.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--cds-color=<var>COLOR</var></span></kbd></td>
+<td>Color for protein-coding regions.</td></tr>
 </tbody>
 </table>
 </blockquote>
@@ -493,6 +601,10 @@ of unknown sequence.</p>
 <p>An unsequenced gap will be shown only if it covers at least one whole
 pixel.</p>
 </div>
+</div>
+<div class="section" id="colors">
+<h2>Colors</h2>
+<p>Colors can be specified in <a class="reference external" href="http://effbot.org/imagingbook/imagecolor.htm">various ways described here</a>.</p>
 </div>
 </div>
 </body>

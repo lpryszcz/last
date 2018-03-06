@@ -192,12 +192,13 @@ void UnsplitAlignment::init() {
       if (s == 1) {
 	rstart = start;
 	rend = start + len;
+	qstrand = (strand == '-') * 2;
 	rname = i->c_str() + (d - c);
 	ralign = i->c_str() + (f - c);
       } else if (s == 2) {
 	qstart = start;
 	qend = start + len;
-	qstrand = strand;
+	if (strand == '-') qstrand = 3 - qstrand;
 	qname = i->c_str() + (d - c);
 	qalign = i->c_str() + (f - c);
       }

@@ -12,7 +12,15 @@
 # Limitations: doesn't (yet) handle sequence quality data,
 # frameshifts, or generalized affine gaps.
 
+import gzip
 import itertools, optparse, os, signal, sys
+
+def myOpen(fileName):
+    if fileName == "-":
+        return sys.stdin
+    if fileName.endswith(".gz"):
+        return gzip.open(fileName)
+    return open(fileName)
 
 def getScoreMatrix(rowHeads, colHeads, matrix, deleteCost, insertCost):
     defaultScore = min(map(min, matrix))
@@ -56,12 +64,12 @@ def printIfGood(maf, seqs, scoreMatrix, delOpenCost, insOpenCost, minScore):
             print line,
         print
 
-def doOneFile(file):
+def doOneFile(lines):
     scoreMatrix = []
     maf = []
     seqs = []
 
-    for line in file:
+    for line in lines:
         if line[0] == "#":
             print line,
             w = line.split()
@@ -91,15 +99,12 @@ def doOneFile(file):
     if seqs: printIfGood(maf, seqs, scoreMatrix, aDel, aIns, minScore)
 
 def lastPostmask(args):
-    if args:
-        for i in args:
-            if i == "-":
-                doOneFile(sys.stdin)
-            else:
-                with open(i) as file:
-                    doOneFile(file)
-    else:
-        doOneFile(sys.stdin)
+    if not args:
+        args = ["-"]
+    for i in args:
+        f = myOpen(i)
+        doOneFile(f)
+        f.close()
 
 if __name__ == "__main__":
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # avoid silly error message

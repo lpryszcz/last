@@ -7,7 +7,15 @@
 # Genome FAQ, not e.g. "MIRA assembly format".
 
 from itertools import *
+import gzip
 import math, optparse, os, signal, sys
+
+def myOpen(fileName):
+    if fileName == "-":
+        return sys.stdin
+    if fileName.endswith(".gz"):
+        return gzip.open(fileName)
+    return open(fileName)
 
 def maxlen(s):
     return max(map(len, s))
@@ -25,9 +33,6 @@ def isMatch(alignmentColumn):
         if i.upper() != first: return False
     return True
 
-def isGapless(alignmentColumn):
-    return "-" not in alignmentColumn
-
 def gapRunCount(row):
     """Get the number of runs of gap characters."""
     return sum(k == "-" for k, v in groupby(row))
@@ -44,17 +49,27 @@ def insertSize(row, letterSize):
     """Get the length of sequence included in the row."""
     return (len(row) - row.count("-")) * letterSize - 4 * row.count("/") - 2 * row.count("\\")
 
-def insertSizeText(row, letterSize):
-    return str(insertSize(row, letterSize))
-
 def matchAndInsertSizes(alignmentColumns, letterSizes):
     """Get sizes of gapless blocks, and of the inserts between them."""
-    for k, v in groupby(alignmentColumns, isGapless):
-        if k:
-            yield str(sum(1 for i in v))
+    letterSizeA, letterSizeB = letterSizes
+    delSize = insSize = subSize = 0
+    for x, y in alignmentColumns:
+        if x == "-":
+            if subSize:
+                if delSize or insSize: yield str(delSize) + ":" + str(insSize)
+                yield str(subSize)
+                delSize = insSize = subSize = 0
+            insSize += symbolSize(y, letterSizeB)
+        elif y == "-":
+            if subSize:
+                if delSize or insSize: yield str(delSize) + ":" + str(insSize)
+                yield str(subSize)
+                delSize = insSize = subSize = 0
+            delSize += symbolSize(x, letterSizeA)
         else:
-            yield ":".join(imap(insertSizeText,
-                                alignmentRowsFromColumns(v), letterSizes))
+            subSize += 1
+    if delSize or insSize: yield str(delSize) + ":" + str(insSize)
+    if subSize: yield str(subSize)
 
 ##### Routines for reading MAF format: #####
 
@@ -154,7 +169,7 @@ def writeAxt(maf):
 
     head, body = ranges[0], ranges[1:]
 
-    outWords = [str(axtCounter.next())]
+    outWords = [str(next(axtCounter))]
     outWords.extend(head[:3])
     for i in body:
         outWords.extend(i)
@@ -202,6 +217,42 @@ def writeTab(maf):
 def mafConvertToTab(opts, lines):
     for maf in mafInput(opts, lines):
         writeTab(maf)
+
+##### Routines for converting to chain format: #####
+
+def writeChain(maf):
+    aLine, sLines, qLines, pLines = maf
+
+    score = "0"
+    for i in aLine.split():
+        if i.startswith("score="):
+            score = i[6:]
+
+    outWords = ["chain", score]
+
+    for seqName, seqLen, strand, letterSize, beg, end, row in sLines:
+        x = seqName, str(seqLen), strand, str(beg), str(end)
+        outWords.extend(x)
+
+    outWords.append(str(next(axtCounter) + 1))
+
+    print " ".join(outWords)
+
+    letterSizes = [i[3] for i in sLines]
+    rows = [i[6] for i in sLines]
+    alignmentColumns = izip(*rows)
+    size = "0"
+    for i in matchAndInsertSizes(alignmentColumns, letterSizes):
+        if ":" in i:
+            print size + "\t" + i.replace(":", "\t")
+            size = "0"
+        else:
+            size = i
+    print size
+
+def mafConvertToChain(opts, lines):
+    for maf in mafInput(opts, lines):
+        writeChain(maf)
 
 ##### Routines for converting to PSL format: #####
 
@@ -328,16 +379,17 @@ def readGroupId(readGroupItems):
 def readSequenceLengths(fileNames):
     """Read name & length of topmost sequence in each maf block."""
     for i in fileNames:
-        with open(i) as f:
-            fields = None
-            for line in f:
-                if fields:
-                    if line.isspace():
-                        fields = None
-                else:
-                    if line[0] == "s":
-                        fields = line.split()
-                        yield fields[1], fields[5]
+        f = myOpen(i)
+        fields = None
+        for line in f:
+            if fields:
+                if line.isspace():
+                    fields = None
+            else:
+                if line[0] == "s":
+                    fields = line.split()
+                    yield fields[1], fields[5]
+        f.close()
 
 def naturalSortKey(s):
     """Return a key that sorts strings in "natural" order."""
@@ -365,11 +417,9 @@ def writeSamHeader(opts, fileNames):
             print "@SQ\tSN:%s\tLN:%s" % (k, sequenceLengths[k])
 
     if opts.dictfile:
-        if opts.dictfile == "-":
-            copyDictFile(sys.stdin)
-        else:
-            with open(opts.dictfile) as f:
-                copyDictFile(f)
+        f = myOpen(opts.dictfile)
+        copyDictFile(f)
+        f.close()
 
     if opts.readgroup:
         print "@RG\t" + "\t".join(opts.readgroup.split())
@@ -753,6 +803,8 @@ def mafConvertOneFile(opts, formatName, lines):
         mafConvertToBlast(opts, lines)
     elif isFormat(formatName, "blasttab"):
         mafConvertToBlastTab(opts, lines)
+    elif isFormat(formatName, "chain"):
+        mafConvertToChain(opts, lines)
     elif isFormat(formatName, "html"):
         mafConvertToHtml(opts, lines)
     elif isFormat(formatName, "psl"):
@@ -780,15 +832,12 @@ def mafConvert(opts, args):
         if isFormat(formatName, "tabular"):
             opts.isKeepComments = True
 
-    if fileNames:
-        for i in fileNames:
-            if i == "-":
-                mafConvertOneFile(opts, formatName, sys.stdin)
-            else:
-                with open(i) as f:
-                    mafConvertOneFile(opts, formatName, f)
-    else:
-        mafConvertOneFile(opts, formatName, sys.stdin)
+    if not fileNames:
+        fileNames = ["-"]
+    for i in fileNames:
+        f = myOpen(i)
+        mafConvertOneFile(opts, formatName, f)
+        f.close()
 
     if not opts.noheader:
         if isFormat(formatName, "html"):
@@ -802,6 +851,7 @@ if __name__ == "__main__":
   %prog axt mafFile(s)
   %prog blast mafFile(s)
   %prog blasttab mafFile(s)
+  %prog chain mafFile(s)
   %prog html mafFile(s)
   %prog psl mafFile(s)
   %prog sam mafFile(s)
@@ -832,7 +882,6 @@ if __name__ == "__main__":
         op.error("need file (not pipe) with option -d")
 
     try: mafConvert(opts, args)
-    except KeyboardInterrupt: pass  # avoid silly error message
     except Exception, e:
         prog = os.path.basename(sys.argv[0])
         sys.exit(prog + ": error: " + str(e))

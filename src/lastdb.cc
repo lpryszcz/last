@@ -3,13 +3,12 @@
 // Read fasta-format sequences; construct a suffix array of them; and
 // write the results to files.
 
+#include "last.hh"
+
 #include "LastdbArguments.hh"
 #include "SubsetSuffixArray.hh"
-#include "Alphabet.hh"
-#include "MultiSequence.hh"
 #include "TantanMasker.hh"
-#include "io.hh"
-#include "qualityScoreUtil.hh"
+#include "zio.hh"
 #include "stringify.hh"
 #include "threadUtil.hh"
 #include <stdexcept>
@@ -23,7 +22,6 @@
 
 using namespace cbrc;
 
-typedef MultiSequence::indexT indexT;
 typedef unsigned long long countT;
 
 // Set up an alphabet (e.g. DNA or protein), based on the user options
@@ -180,12 +178,21 @@ static void preprocessSeqs(MultiSequence &multi,
 // Make one database volume, from one batch of sequences
 void makeVolume( std::vector< CyclicSubsetSeed >& seeds,
 		 MultiSequence& multi, const LastdbArguments& args,
-		 const Alphabet& alph, const std::vector<countT>& letterCounts,
+		 const Alphabet& alph, std::vector<countT>& letterCounts,
 		 const TantanMasker& masker, unsigned numOfThreads,
 		 const std::string& seedText, const std::string& baseName ){
   size_t numOfIndexes = seeds.size();
   size_t numOfSequences = multi.finishedSequences();
-  size_t textLength = multi.finishedSize();
+  size_t textLength = multi.seqBeg(numOfSequences);
+  const uchar* seq = multi.seqReader();
+
+  std::vector<countT> letterCountsInThisVolume(alph.size);
+  alph.count(seq, seq + textLength, &letterCountsInThisVolume[0]);
+  for (unsigned c = 0; c < alph.size; ++c) {
+    letterCounts[c] += letterCountsInThisVolume[c];
+  }
+
+  if (args.isCountsOnly) return;
 
   if( args.tantanSetting ){
     LOG( "masking..." );
@@ -194,9 +201,8 @@ void makeVolume( std::vector< CyclicSubsetSeed >& seeds,
 
   LOG( "writing..." );
   writePrjFile( baseName + ".prj", args, alph, numOfSequences,
-		letterCounts, -1, numOfIndexes, seedText );
+		letterCountsInThisVolume, -1, numOfIndexes, seedText );
   multi.toFiles( baseName );
-  const uchar* seq = multi.seqReader();
 
   for( unsigned x = 0; x < numOfIndexes; ++x ){
     SubsetSuffixArray myIndex;
@@ -209,7 +215,8 @@ void makeVolume( std::vector< CyclicSubsetSeed >& seeds,
     }
 
     LOG( "sorting..." );
-    myIndex.sortIndex( seq, args.minSeedLimit, args.childTableType );
+    myIndex.sortIndex( seq, args.minSeedLimit, args.childTableType,
+		       numOfThreads );
 
     LOG( "bucketing..." );
     myIndex.makeBuckets( seq, args.bucketDepth );
@@ -244,35 +251,11 @@ static indexT maxLettersPerVolume( const LastdbArguments& args,
   return z;
 }
 
-// Read the next sequence, adding it to the MultiSequence and the SuffixArray
-std::istream&
-appendFromFasta( MultiSequence& multi, unsigned numOfIndexes,
-		 const LastdbArguments& args, const Alphabet& alph,
-		 std::istream& in ){
-  indexT maxSeqLen = maxLettersPerVolume( args, numOfIndexes );
-  if( multi.finishedSequences() == 0 ) maxSeqLen = indexT(-1);
-
-  size_t oldSize = multi.unfinishedSize();
-
-  if ( args.inputFormat == sequenceFormat::fasta )
-    multi.appendFromFasta( in, maxSeqLen );
-  else
-    multi.appendFromFastq( in, maxSeqLen );
-
-  if( !multi.isFinished() && multi.finishedSequences() == 0 )
-    ERR( "encountered a sequence that's too long" );
-
-  // encode the newly-read sequence
-  uchar* seq = multi.seqWriter();
-  size_t newSize = multi.unfinishedSize();
-  alph.tr( seq + oldSize, seq + newSize, args.isKeepLowercase );
-
-  if( isPhred( args.inputFormat ) )  // assumes one quality code per letter:
-    checkQualityCodes( multi.qualityReader() + oldSize,
-                       multi.qualityReader() + newSize,
-                       qualityOffset( args.inputFormat ) );
-
-  return in;
+static bool isRoomToDuplicateTheLastSequence(const MultiSequence &multi,
+					     size_t maxSeqLen) {
+  size_t n = multi.finishedSequences();
+  size_t s = multi.seqBeg(n);
+  return s <= maxSeqLen && s - multi.seqBeg(n - 1) <= maxSeqLen - s;
 }
 
 void lastdb( int argc, char** argv ){
@@ -290,62 +273,68 @@ void lastdb( int argc, char** argv ){
   unsigned numOfThreads =
     decideNumberOfThreads(args.numOfThreads, args.programName, args.verbosity);
   Alphabet alph;
-  MultiSequence multi;
-  std::vector< CyclicSubsetSeed > seeds;
   makeAlphabet( alph, args );
   TantanMasker tantanMasker;
   if( args.tantanSetting )
     tantanMasker.init( alph.isProtein(), args.tantanSetting > 1,
 		       alph.letters, alph.encode );
+  std::vector< CyclicSubsetSeed > seeds;
   makeSubsetSeeds( seeds, seedText, args, alph );
+  MultiSequence multi;
   multi.initForAppending(1);
-  alph.tr( multi.seqWriter(), multi.seqWriter() + multi.unfinishedSize() );
+  alph.tr(multi.seqWriter(), multi.seqWriter() + multi.seqBeg(0));
   unsigned volumeNumber = 0;
   countT sequenceCount = 0;
   std::vector<countT> letterCounts( alph.size );
-  std::vector<countT> letterTotals( alph.size );
+  indexT maxSeqLen = maxLettersPerVolume( args, seeds.size() );
 
   char defaultInputName[] = "-";
   char* defaultInput[] = { defaultInputName, 0 };
   char** inputBegin = argv + args.inputStart;
 
   for( char** i = *inputBegin ? inputBegin : defaultInput; *i; ++i ){
-    std::ifstream inFileStream;
+    mcf::izstream inFileStream;
     std::istream& in = openIn( *i, inFileStream );
     LOG( "reading " << *i << "..." );
 
-    while( appendFromFasta( multi, seeds.size(), args, alph, in ) ){
+    while (appendSequence(multi, in, maxSeqLen, args.inputFormat, alph,
+			  args.isKeepLowercase, 0)) {
       if( !args.isProtein && args.userAlphabet.empty() &&
           sequenceCount == 0 && isDubiousDna( alph, multi ) ){
         std::cerr << args.programName << ": that's some funny-lookin DNA\n";
       }
 
       if( multi.isFinished() ){
-        ++sequenceCount;
-	const uchar* seq = multi.seqReader();
-	size_t lastSeq = multi.finishedSequences() - 1;
-	size_t beg = multi.seqBeg( lastSeq );
-	size_t end = multi.seqEnd( lastSeq );
-	alph.count( seq + beg, seq + end, &letterCounts[0] );
-	if( args.isCountsOnly ){
-	  // memory-saving, which seems to be important on 32-bit systems:
-	  multi.reinitForAppending();
+	if (args.strand != 1) {
+	  if (args.strand == 2) {
+	    ++sequenceCount;
+	    if (isRoomToDuplicateTheLastSequence(multi, maxSeqLen)) {
+	      size_t lastSeq = multi.finishedSequences() - 1;
+	      multi.duplicateOneSequence(lastSeq);
+	    } else {
+	      std::string baseName =
+		args.lastdbName + stringify(volumeNumber++);
+	      makeVolume(seeds, multi, args, alph, letterCounts,
+			 tantanMasker, numOfThreads, seedText, baseName);
+	      multi.eraseAllButTheLastSequence();
+	    }
+	  }
+	  size_t lastSeq = multi.finishedSequences() - 1;
+	  multi.reverseComplementOneSequence(lastSeq, alph.complement);
 	}
+        ++sequenceCount;
       }
       else{
 	std::string baseName = args.lastdbName + stringify(volumeNumber++);
 	makeVolume( seeds, multi, args, alph, letterCounts,
 		    tantanMasker, numOfThreads, seedText, baseName );
-	for( unsigned c = 0; c < alph.size; ++c )
-	  letterTotals[c] += letterCounts[c];
-	letterCounts.assign( alph.size, 0 );
 	multi.reinitForAppending();
       }
     }
   }
 
   if( multi.finishedSequences() > 0 ){
-    if( volumeNumber == 0 ){
+    if( volumeNumber == 0 && !args.isCountsOnly ){
       makeVolume( seeds, multi, args, alph, letterCounts,
 		  tantanMasker, numOfThreads, seedText, args.lastdbName );
       return;
@@ -355,10 +344,8 @@ void lastdb( int argc, char** argv ){
 		tantanMasker, numOfThreads, seedText, baseName );
   }
 
-  for( unsigned c = 0; c < alph.size; ++c ) letterTotals[c] += letterCounts[c];
-
   writePrjFile( args.lastdbName + ".prj", args, alph, sequenceCount,
-		letterTotals, volumeNumber, seeds.size(), seedText );
+		letterCounts, volumeNumber, seeds.size(), seedText );
 }
 
 int main( int argc, char** argv )

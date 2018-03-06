@@ -1,8 +1,383 @@
+2018-03-05  Martin C. Frith  <Martin C. Frith>
+
+	* scripts/last-dotplot, test/last-dotplot-test.out, test/last-dotplot-
+	test.sh:
+	Fix dotplot --strands bug with cut sequences
+	[bc08832db1a1] [tip]
+
+	* scripts/last-dotplot, test/last-dotplot-test.out, test/last-dotplot-
+	test.sh:
+	Fix dotplot crash for sorting by sequence length
+	[e1861f956f60]
+
+2018-02-26  Martin C. Frith  <Martin C. Frith>
+
+	* doc/lastdb.txt, src/Alphabet.cc, test/last-test.out, test/last-
+	test.sh:
+	Convert Us in RNA to Ts
+	[e7d7cb7db0a7]
+
+2018-02-13  Martin C. Frith  <Martin C. Frith>
+
+	* doc/lastdb.txt, src/SubsetSuffixArray.hh,
+	src/SubsetSuffixArraySort.cc, src/lastdb.cc:
+	Multi-thread lastdb's main sort
+	[77d8757028c2]
+
+	* src/alp/sls_alignment_evaluer.cpp, test/last-test.out:
+	Fix some E-value & last-train fails
+	[2c57015b1e89]
+
+2018-01-05  Martin C. Frith  <Martin C. Frith>
+
+	* src/Alignment.cc, src/Alignment.hh, src/Centroid.cc,
+	src/Centroid.hh:
+	Refactor
+	[8430dbf5abe7]
+
+	* src/Centroid.cc:
+	Try to calculate lastal probs a tiny bit faster
+	[1abf5130f283]
+
+	* src/Alignment.cc, src/Alignment.hh, src/AlignmentWrite.cc,
+	src/Centroid.cc, src/Centroid.hh:
+	Refactor
+	[57012f1307c8]
+
+	* src/Alignment.cc, src/Centroid.cc, src/Centroid.hh:
+	Refactor
+	[c98504d1610e]
+
+	* src/Centroid.cc, src/Centroid.hh:
+	Refactor
+	[c83131b68177]
+
+2017-12-21  Martin C. Frith  <Martin C. Frith>
+
+	* doc/last-dotplot.txt, scripts/last-dotplot:
+	last-dotplot: add strand/orientation options
+	[ffe68ba3d865]
+
+	* scripts/last-dotplot:
+	Refactor last-dotplot
+	[6079fabb49a5]
+
+2017-12-05  Martin C. Frith  <Martin C. Frith>
+
+	* doc/last-dotplot.txt, scripts/last-dotplot:
+	last-dotplot: add alignment-order options
+	[f4ca19d126e3]
+
+	* scripts/last-dotplot:
+	Refactor last-dotplot
+	[e87abc7ae9c6]
+
+2017-11-08  Martin C. Frith  <Martin C. Frith>
+
+	* scripts/last-dotplot:
+	Tweak last-dotplot range-end pixels
+	[8834139fa8a8]
+
+	* doc/last-dotplot.txt, scripts/last-dotplot:
+	Add last-dotplot secondary alignments option
+	[4080f3f6f73d]
+
+	* scripts/last-dotplot:
+	Add gap-cutting options to last-dotplot
+	[42653029d900]
+
+	* doc/last-dotplot.txt, scripts/last-dotplot:
+	Remove last-dotplot trim options
+	[92dfad507286]
+
+	* scripts/last-dotplot:
+	Refactor last-dotplot
+	[6840398323e1]
+
+	* scripts/last-dotplot:
+	Tweak last-dotplot's sort options
+	[87991b57ed04]
+
+	* scripts/last-dotplot:
+	Refactor last-dotplot
+	[21fbf377641f]
+
+	* scripts/last-dotplot:
+	Refactor last-dotplot
+	[8d52cef22afa]
+
+	* scripts/last-dotplot:
+	Tweak dotplot labels
+	[c2f50cd4e29d]
+
+	* doc/last-dotplot.txt, scripts/last-dotplot:
+	Make last-dotplot try to find a nice font
+	[3af6b02e3f9c]
+
+	* src/CyclicSubsetSeed.cc, src/ScoreMatrix.cc, src/io.cc, src/io.hh,
+	src/last-pair-probs.cc, src/lastal.cc, src/lastdb.cc, src/makefile,
+	src/zio.hh:
+	Try to fix build fails on some computers
+	[db84a7e4ff8a]
+
+2017-11-02  Martin C. Frith  <Martin C. Frith>
+
+	* scripts/last-dotplot:
+	Tweak last-dotplot's label placement
+	[2003b209d750]
+
+	* scripts/last-dotplot:
+	Refactor last-dotplot
+	[5ce3e786e05a]
+
+	* scripts/last-dotplot:
+	Refactor last-dotplot
+	[ccf8902bf86c]
+
+	* doc/last-dotplot.txt, scripts/last-dotplot:
+	Change last-dotplot's label options
+	[f6a9c15287ea]
+
+	* scripts/last-dotplot:
+	Refactor last-dotplot
+	[f7bc7d099e2b]
+
+	* scripts/last-dotplot:
+	Refactor last-dotplot
+	[2238466f36bd]
+
+	* scripts/last-dotplot:
+	Tweak the dotplot colors
+	[8eb06508b3ed]
+
+2017-10-24  Martin C. Frith  <Martin C. Frith>
+
+	* src/CyclicSubsetSeed.cc, src/MultiSequence.cc, src/MultiSequence.hh,
+	src/MultiSequenceQual.cc, src/ScoreMatrix.cc:
+	Make the code a bit more robust
+	[efb59c80bd48]
+
+	* src/split/cbrc_split_aligner.cc,
+	src/split/cbrc_unsplit_alignment.cc,
+	src/split/cbrc_unsplit_alignment.hh, src/split/last-split.cc:
+	Make last-split work with lastdb strand option
+	[e6f6334cedb8]
+
+	* doc/last-train.txt, scripts/last-train, src/LastEvaluer.cc,
+	src/LastEvaluer.hh, src/alp/sls_pvalues.cpp, src/lastal.cc:
+	Fix some E-value & last-train fails
+	[c208904d9c3e]
+
+2017-10-20  Martin C. Frith  <Martin C. Frith>
+
+	* src/AlignmentWrite.cc, src/LastdbArguments.cc,
+	src/LastdbArguments.hh, src/MultiSequence.cc, src/MultiSequence.hh,
+	src/lastdb.cc:
+	Add lastdb strand option
+	[bef94bc275d5]
+
+	* src/MultiSequence.hh, src/last.hh, src/lastal.cc, src/lastdb.cc,
+	src/makefile, src/mcf_zstream.hh:
+	Refactor
+	[a4cdd7fbaee2]
+
+2017-10-19  Martin C. Frith  <Martin C. Frith>
+
+	* src/Alignment.hh, src/AlignmentWrite.cc, src/MultiSequence.cc,
+	src/MultiSequence.hh, src/lastal.cc:
+	Start implementing reverse strands in lastdb
+	[5187bd412fb6]
+
+	* src/MultiSequence.cc, src/MultiSequence.hh,
+	src/MultiSequenceQual.cc:
+	Refactor
+	[3ba00f2e93e0]
+
+	* src/MultiSequence.cc, src/MultiSequence.hh,
+	src/MultiSequenceQual.cc, src/lastdb.cc:
+	Refactor
+	[69da6e43d607]
+
+	* src/LastdbArguments.cc, src/MultiSequence.cc, src/MultiSequence.hh,
+	src/lastal.cc:
+	Refactor
+	[284c69b1bf3e]
+
+2017-10-10  Martin C. Frith  <Martin C. Frith>
+
+	* scripts/last-train:
+	Make last-train print the lastal version
+	[c2ce08b5a76a]
+
+	* src/Alphabet.cc, src/Alphabet.hh, src/MultiSequence.hh,
+	src/lastal.cc, src/lastdb.cc:
+	Refactor
+	[52565bc1c7d7]
+
+	* src/lastdb.cc:
+	Refactor (I think)
+	[02a9cb451bc7]
+
+	* src/MultiSequence.cc, src/MultiSequence.hh,
+	src/MultiSequenceQual.cc, src/lastal.cc:
+	Refactor some code
+	[88fa35342a52]
+
+	* scripts/last-train, test/last-train-test.out, test/last-train-
+	test.sh:
+	Make last-train work with lastdb8
+	[a7ef7848ad1e]
+
+2017-10-06  Martin C. Frith  <Martin C. Frith>
+
+	* doc/maf-convert.txt, scripts/maf-convert, test/maf-convert-test.out,
+	test/maf-convert-test.sh:
+	Add maf-convert -> chain
+	[6635b482e6e2]
+
+	* doc/last.txt, src/LastEvaluer.cc:
+	Avoid some "can't get E-value parameters" errors
+	[2c0cb7ef8842]
+
+2017-10-03  Martin C. Frith  <Martin C. Frith>
+
+	* doc/last-dotplot.txt, scripts/last-dotplot:
+	Add text-rotation options to last-dotplot
+	[20f5c97a3cfd]
+
+	* scripts/last-dotplot:
+	Fix mixed-up margin sizes in last-dotplot
+	[f5f93e51ef53]
+
+2017-09-27  Martin C. Frith  <Martin C. Frith>
+
+	* src/makefile:
+	Try to make the gz compilation work more portably
+	[bf8efe69f160]
+
+2017-09-26  Martin C. Frith  <Martin C. Frith>
+
+	* scripts/last-dotplot, scripts/last-postmask, scripts/last-train,
+	scripts/maf-convert, test/last-postmask-test.out, test/last-
+	postmask-test.sh, test/last-test.sh:
+	Add gz reading to: dotplot postmask train convert
+	[592295375eb1]
+
+2017-09-22  Martin C. Frith  <Martin C. Frith>
+
+	* doc/last-parallel.txt, src/mcf_zstream.hh:
+	Make the gz stuff compile on old computers
+	[0602563ef4e2]
+
+	* src/makefile:
+	Try to make compilation more robust & portable
+	[8a2e4af79c99]
+
+	* doc/lastal.txt, doc/lastdb.txt, scripts/fastq-interleave, src/io.cc,
+	src/io.hh, src/last-pair-probs.cc, src/lastal.cc, src/lastdb.cc,
+	src/makefile, src/mcf_zstream.hh:
+	Enable lastal, lastdb, etc to read .gz files
+	[a530b1ee48f4]
+
+	* doc/last-train.txt, scripts/last-train:
+	Add option -k to last-train
+	[80a016b17089]
+
+	* doc/last-tuning.txt, doc/lastal.txt, src/LastalArguments.cc, test
+	/last-test.out, test/last-test.sh:
+	Add -x % option to lastal
+	[ad7f5f953412]
+
+2017-06-20  Martin C. Frith  <Martin C. Frith>
+
+	* doc/last-train.txt, scripts/last-train, test/last-train-test.out,
+	test/last-train-test.sh:
+	Make it easier to feed stdin/pipe to last-train
+	[b73f1146e688]
+
+	* doc/lastal.txt, src/AlignmentWrite.cc, test/last-test.out:
+	Add raw score to BlastTab+ format
+	[56f960a740a3]
+
+2017-06-15  Martin C. Frith  <Martin C. Frith>
+
+	* scripts/last-postmask, scripts/last-train:
+	Make last-train read sequence file "-" from stdin
+	[f9ec9c71d72e]
+
+	* doc/last-dotplot.txt, scripts/last-dotplot:
+	Change last-dotplot's verbosity
+	[5182d8528ce9]
+
+	* src/LastEvaluer.cc, src/alp/sls_alignment_evaluer.cpp,
+	src/alp/sls_alignment_evaluer.hpp, src/alp/sls_alp_data.cpp,
+	src/alp/sls_alp_data.hpp:
+	Enable E-values for some unusual scoring schemes
+	[230d1abe4c5d]
+
+2017-06-02  Martin C. Frith  <Martin C. Frith>
+
+	* doc/last-papers.txt, doc/last-tutorial.txt:
+	Update docs
+	[c15cd2ae062d]
+
+	* scripts/last-dotplot:
+	last-dotplot: get bp-per-pixel faster
+	[6a4915d5b5cb]
+
+	* src/LastalArguments.cc, src/LastdbArguments.cc, src/getoptUtil.hh,
+	src/makefile:
+	Fix parsing of command-line options
+	[9afba231262d]
+
+2017-05-18  Martin C. Frith  <Martin C. Frith>
+
+	* scripts/last-dotplot:
+	last-dotplot: do e.g. chr7 annotations -> hg19.chr7 only if no
+	ambiguity
+	[a75b439f0cf2]
+
+	* doc/last-dotplot.txt, scripts/last-dotplot:
+	last-dotplot: add genePred and rmsk options
+	[6e8ff424ce2b]
+
+	* scripts/last-dotplot:
+	last-dotplot: refactor
+	[1ecdbf2ddb78]
+
+	* scripts/last-dotplot:
+	last-dotplot: get layer from BED score
+	[93d47bb8527f]
+
+	* scripts/last-dotplot:
+	last-dotplot: start implementing "layers"
+	[5e4e3f2cf68b]
+
+	* scripts/last-dotplot:
+	last-dotplot: parse BED more liberally
+	[d086361eabec]
+
+2017-05-17  Martin C. Frith  <Martin C. Frith>
+
+	* scripts/last-dotplot:
+	Refactor last-dotplot
+	[09a9d7ef13ae]
+
+2017-05-15  Martin C. Frith  <Martin C. Frith>
+
+	* scripts/maf-convert:
+	Make maf-convert to tab faster
+	[0d11825c43b2]
+
+	* doc/last-train.txt, scripts/last-train:
+	Add lastal's -C option to last-train
+	[791ec91ac03c]
+
 2017-05-02  Martin C. Frith  <Martin C. Frith>
 
 	* doc/last-dotplot.txt, scripts/last-dotplot:
 	Add border options to last-dotplot
-	[f3b6c666afad] [tip]
+	[f3b6c666afad]
 
 	* doc/last-dotplot.txt, scripts/last-dotplot:
 	Add sequence order options to last-dotplot

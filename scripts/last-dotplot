@@ -9,35 +9,55 @@
 # according to the number of aligned nt-pairs within it, but the
 # result is too faint.  How can this be done better?
 
-import fnmatch, itertools, optparse, os, re, sys
+import collections
+import functools
+import gzip
+from fnmatch import fnmatchcase
+from operator import itemgetter
+import subprocess
+import itertools, optparse, os, re, sys
 
 # Try to make PIL/PILLOW work:
 try: from PIL import Image, ImageDraw, ImageFont, ImageColor
 except ImportError: import Image, ImageDraw, ImageFont, ImageColor
 
 def myOpen(fileName):  # faster than fileinput
+    if fileName is None:
+        return []
     if fileName == "-":
         return sys.stdin
+    if fileName.endswith(".gz"):
+        return gzip.open(fileName)
     return open(fileName)
 
 def warn(message):
-    prog = os.path.basename(sys.argv[0])
-    sys.stderr.write(prog + ": " + message + "\n")
+    if opts.verbose:
+        prog = os.path.basename(sys.argv[0])
+        sys.stderr.write(prog + ": " + message + "\n")
 
-def croppedBlocks(blocks, range1, range2):
-    cropBeg1, cropEnd1 = range1
-    cropBeg2, cropEnd2 = range2
-    if blocks[0][0] < 0: cropBeg1, cropEnd1 = -cropEnd1, -cropBeg1
-    if blocks[0][1] < 0: cropBeg2, cropEnd2 = -cropEnd2, -cropBeg2
-    for beg1, beg2, size in blocks:
-        b1 = max(cropBeg1, beg1)
-        e1 = min(cropEnd1, beg1 + size)
-        if b1 >= e1: continue
-        offset = beg2 - beg1
-        b2 = max(cropBeg2, b1 + offset)
-        e2 = min(cropEnd2, e1 + offset)
-        if b2 >= e2: continue
-        yield b2 - offset, b2, e2 - b2
+def groupByFirstItem(things):
+    for k, v in itertools.groupby(things, itemgetter(0)):
+        yield k, [i[1:] for i in v]
+
+def croppedBlocks(blocks, ranges1, ranges2):
+    headBeg1, headBeg2, headSize = blocks[0]
+    for r1 in ranges1:
+        for r2 in ranges2:
+            cropBeg1, cropEnd1 = r1
+            if headBeg1 < 0:
+                cropBeg1, cropEnd1 = -cropEnd1, -cropBeg1
+            cropBeg2, cropEnd2 = r2
+            if headBeg2 < 0:
+                cropBeg2, cropEnd2 = -cropEnd2, -cropBeg2
+            for beg1, beg2, size in blocks:
+                b1 = max(cropBeg1, beg1)
+                e1 = min(cropEnd1, beg1 + size)
+                if b1 >= e1: continue
+                offset = beg2 - beg1
+                b2 = max(cropBeg2, b1 + offset)
+                e2 = min(cropEnd2, e1 + offset)
+                if b2 >= e2: continue
+                yield b2 - offset, b2, e2 - b2
 
 def tabBlocks(beg1, beg2, blocks):
     '''Get the gapless blocks of an alignment, from LAST tabular format.'''
@@ -98,7 +118,7 @@ def alignmentInput(lines):
                 yield chr1, seqlen1, chr2, seqlen2, blocks
                 mafCount = 0
 
-def seqRangeFromText(text):
+def seqRequestFromText(text):
     if ":" in text:
         pattern, interval = text.rsplit(":", 1)
         if "-" in interval:
@@ -106,52 +126,154 @@ def seqRangeFromText(text):
             return pattern, int(beg), int(end)  # beg may be negative
     return text, 0, sys.maxsize
 
-def rangeFromSeqName(seqRanges, name, seqLen):
-    if not seqRanges: return 0, seqLen
-    base = name.split(".")[-1]  # allow for names like hg19.chr7
-    for pat, beg, end in seqRanges:
-        if fnmatch.fnmatchcase(name, pat) or fnmatch.fnmatchcase(base, pat):
-            return max(beg, 0), min(end, seqLen)
-    return None
-
-def updateSeqs(isTrim, seqNames, seqLimits, seqName, seqRange, blocks, index):
-    if seqName not in seqLimits:
-        seqNames.append(seqName)
-    if isTrim:
-        beg = blocks[0][index]
-        end = blocks[-1][index] + blocks[-1][2]
-        if beg < 0: beg, end = -end, -beg
-        if seqName in seqLimits:
-            b, e = seqLimits[seqName]
-            seqLimits[seqName] = min(b, beg), max(e, end)
-        else:
-            seqLimits[seqName] = beg, end
+def rangesFromSeqName(seqRequests, name, seqLen):
+    if seqRequests:
+        base = name.split(".")[-1]  # allow for names like hg19.chr7
+        for pat, beg, end in seqRequests:
+            if fnmatchcase(name, pat) or fnmatchcase(base, pat):
+                yield max(beg, 0), min(end, seqLen)
     else:
-        seqLimits[seqName] = seqRange
+        yield 0, seqLen
+
+def updateSeqs(coverDict, seqRanges, seqName, ranges, coveredRange):
+    beg, end = coveredRange
+    if beg < 0:
+        coveredRange = -end, -beg
+    if seqName in coverDict:
+        coverDict[seqName].append(coveredRange)
+    else:
+        coverDict[seqName] = [coveredRange]
+        for beg, end in ranges:
+            r = seqName, beg, end
+            seqRanges.append(r)
 
 def readAlignments(fileName, opts):
     '''Get alignments and sequence limits, from MAF or tabular format.'''
-    seqRanges1 = map(seqRangeFromText, opts.seq1)
-    seqRanges2 = map(seqRangeFromText, opts.seq2)
+    seqRequests1 = map(seqRequestFromText, opts.seq1)
+    seqRequests2 = map(seqRequestFromText, opts.seq2)
 
     alignments = []
-    seqNames1 = []
-    seqNames2 = []
-    seqLimits1 = {}
-    seqLimits2 = {}
+    seqRanges1 = []
+    seqRanges2 = []
+    coverDict1 = {}
+    coverDict2 = {}
     lines = myOpen(fileName)
     for seqName1, seqLen1, seqName2, seqLen2, blocks in alignmentInput(lines):
-        range1 = rangeFromSeqName(seqRanges1, seqName1, seqLen1)
-        if not range1: continue
-        range2 = rangeFromSeqName(seqRanges2, seqName2, seqLen2)
-        if not range2: continue
-        b = list(croppedBlocks(list(blocks), range1, range2))
+        ranges1 = sorted(rangesFromSeqName(seqRequests1, seqName1, seqLen1))
+        if not ranges1: continue
+        ranges2 = sorted(rangesFromSeqName(seqRequests2, seqName2, seqLen2))
+        if not ranges2: continue
+        b = list(croppedBlocks(list(blocks), ranges1, ranges2))
         if not b: continue
         aln = seqName1, seqName2, b
         alignments.append(aln)
-        updateSeqs(opts.trim1, seqNames1, seqLimits1, seqName1, range1, b, 0)
-        updateSeqs(opts.trim2, seqNames2, seqLimits2, seqName2, range2, b, 1)
-    return alignments, seqNames1, seqNames2, seqLimits1, seqLimits2
+        coveredRange1 = b[0][0], b[-1][0] + b[-1][2]
+        updateSeqs(coverDict1, seqRanges1, seqName1, ranges1, coveredRange1)
+        coveredRange2 = b[0][1], b[-1][1] + b[-1][2]
+        updateSeqs(coverDict2, seqRanges2, seqName2, ranges2, coveredRange2)
+    return alignments, seqRanges1, coverDict1, seqRanges2, coverDict2
+
+def nameAndRangesFromDict(cropDict, seqName):
+    if seqName in cropDict:
+        return seqName, cropDict[seqName]
+    n = seqName.split(".")[-1]
+    if n in cropDict:
+        return n, cropDict[n]
+    return seqName, []
+
+def rangesForSecondaryAlignments(primaryRanges, seqLen):
+    if primaryRanges:
+        return primaryRanges
+    return [(0, seqLen)]
+
+def readSecondaryAlignments(opts, cropRanges1, cropRanges2):
+    cropDict1 = dict(groupByFirstItem(cropRanges1))
+    cropDict2 = dict(groupByFirstItem(cropRanges2))
+
+    alignments = []
+    seqRanges1 = []
+    seqRanges2 = []
+    coverDict1 = {}
+    coverDict2 = {}
+    lines = myOpen(opts.alignments)
+    for seqName1, seqLen1, seqName2, seqLen2, blocks in alignmentInput(lines):
+        seqName1, ranges1 = nameAndRangesFromDict(cropDict1, seqName1)
+        seqName2, ranges2 = nameAndRangesFromDict(cropDict2, seqName2)
+        if not ranges1 and not ranges2:
+            continue
+        r1 = rangesForSecondaryAlignments(ranges1, seqLen1)
+        r2 = rangesForSecondaryAlignments(ranges2, seqLen2)
+        b = list(croppedBlocks(list(blocks), r1, r2))
+        if not b: continue
+        aln = seqName1, seqName2, b
+        alignments.append(aln)
+        if not ranges1:
+            coveredRange1 = b[0][0], b[-1][0] + b[-1][2]
+            updateSeqs(coverDict1, seqRanges1, seqName1, r1, coveredRange1)
+        if not ranges2:
+            coveredRange2 = b[0][1], b[-1][1] + b[-1][2]
+            updateSeqs(coverDict2, seqRanges2, seqName2, r2, coveredRange2)
+    return alignments, seqRanges1, coverDict1, seqRanges2, coverDict2
+
+def twoValuesFromOption(text, separator):
+    if separator in text:
+        return text.split(separator)
+    return text, text
+
+def mergedRanges(ranges):
+    oldBeg, maxEnd = ranges[0]
+    for beg, end in ranges:
+        if beg > maxEnd:
+            yield oldBeg, maxEnd
+            oldBeg = beg
+            maxEnd = end
+        elif end > maxEnd:
+            maxEnd = end
+    yield oldBeg, maxEnd
+
+def mergedRangesPerSeq(coverDict):
+    for k, v in coverDict.iteritems():
+        v.sort()
+        yield k, list(mergedRanges(v))
+
+def coveredLength(mergedCoverDict):
+    return sum(sum(e - b for b, e in v) for v in mergedCoverDict.itervalues())
+
+def trimmed(seqRanges, coverDict, minAlignedBases, maxGapFrac, endPad, midPad):
+    maxEndGapFrac, maxMidGapFrac = twoValuesFromOption(maxGapFrac, ",")
+    maxEndGap = max(float(maxEndGapFrac) * minAlignedBases, endPad * 1.0)
+    maxMidGap = max(float(maxMidGapFrac) * minAlignedBases, midPad * 2.0)
+
+    for seqName, rangeBeg, rangeEnd in seqRanges:
+        seqBlocks = coverDict[seqName]
+        blocks = [i for i in seqBlocks if i[0] < rangeEnd and i[1] > rangeBeg]
+        if blocks[0][0] - rangeBeg > maxEndGap:
+            rangeBeg = blocks[0][0] - endPad
+        for j, y in enumerate(blocks):
+            if j:
+                x = blocks[j - 1]
+                if y[0] - x[1] > maxMidGap:
+                    yield seqName, rangeBeg, x[1] + midPad
+                    rangeBeg = y[0] - midPad
+        if rangeEnd - blocks[-1][1] > maxEndGap:
+            rangeEnd = blocks[-1][1] + endPad
+        yield seqName, rangeBeg, rangeEnd
+
+def rangesWithStrandInfo(seqRanges, strandOpt, alignments, seqIndex):
+    if strandOpt == "1":
+        forwardMinusReverse = collections.defaultdict(int)
+        for i in alignments:
+            blocks = i[2]
+            beg1, beg2, size = blocks[0]
+            numOfAlignedLetterPairs = sum(i[2] for i in blocks)
+            if (beg1 < 0) != (beg2 < 0):  # opposite-strand alignment
+                numOfAlignedLetterPairs *= -1
+            forwardMinusReverse[i[seqIndex]] += numOfAlignedLetterPairs
+    strandNum = 0
+    for seqName, beg, end in seqRanges:
+        if strandOpt == "1":
+            strandNum = 1 if forwardMinusReverse[seqName] >= 0 else 2
+        yield seqName, beg, end, strandNum
 
 def natural_sort_key(my_string):
     '''Return a sort key for "natural" ordering, e.g. chr9 < chr10.'''
@@ -159,13 +281,93 @@ def natural_sort_key(my_string):
     parts[1::2] = map(int, parts[1::2])
     return parts
 
-def get_text_sizes(my_strings, font, fontsize, image_mode):
-    '''Get widths & heights, in pixels, of some strings.'''
-    if fontsize == 0: return [(0, 0) for i in my_strings]
-    image_size = 1, 1
-    im = Image.new(image_mode, image_size)
-    draw = ImageDraw.Draw(im)
-    return [draw.textsize(i, font=font) for i in my_strings]
+def nameKey(oneSeqRanges):
+    return natural_sort_key(oneSeqRanges[0][0])
+
+def sizeKey(oneSeqRanges):
+    return sum(b - e for n, b, e, s in oneSeqRanges), nameKey(oneSeqRanges)
+
+def alignmentKey(seqNamesToLists, oneSeqRanges):
+    seqName = oneSeqRanges[0][0]
+    alignmentsOfThisSequence = seqNamesToLists[seqName]
+    numOfAlignedLetterPairs = sum(i[3] for i in alignmentsOfThisSequence)
+    toMiddle = numOfAlignedLetterPairs // 2
+    for i in alignmentsOfThisSequence:
+        toMiddle -= i[3]
+        if toMiddle < 0:
+            return i[1:3]  # sequence-rank and "position" of this alignment
+
+def rankAndFlipPerSeq(seqRanges):
+    rangesGroupedBySeqName = itertools.groupby(seqRanges, itemgetter(0))
+    for rank, group in enumerate(rangesGroupedBySeqName):
+        seqName, ranges = group
+        strandNum = next(ranges)[3]
+        flip = 1 if strandNum < 2 else -1
+        yield seqName, (rank, flip)
+
+def alignmentSortData(alignments, seqIndex, otherNamesToRanksAndFlips):
+    otherIndex = 1 - seqIndex
+    for i in alignments:
+        blocks = i[2]
+        otherRank, otherFlip = otherNamesToRanksAndFlips[i[otherIndex]]
+        otherPos = otherFlip * abs(blocks[0][otherIndex] +
+                                   blocks[-1][otherIndex] + blocks[-1][2])
+        numOfAlignedLetterPairs = sum(i[2] for i in blocks)
+        yield i[seqIndex], otherRank, otherPos, numOfAlignedLetterPairs
+
+def mySortedRanges(seqRanges, sortOpt, seqIndex, alignments, otherRanges):
+    rangesGroupedBySeqName = itertools.groupby(seqRanges, itemgetter(0))
+    g = [list(ranges) for seqName, ranges in rangesGroupedBySeqName]
+    for i in g:
+        if i[0][3] > 1:
+            i.reverse()
+    if sortOpt == "1":
+        g.sort(key=nameKey)
+    if sortOpt == "2":
+        g.sort(key=sizeKey)
+    if sortOpt == "3":
+        otherNamesToRanksAndFlips = dict(rankAndFlipPerSeq(otherRanges))
+        alns = sorted(alignmentSortData(alignments, seqIndex,
+                                        otherNamesToRanksAndFlips))
+        alnsGroupedBySeqName = itertools.groupby(alns, itemgetter(0))
+        seqNamesToLists = dict((k, list(v)) for k, v in alnsGroupedBySeqName)
+        g.sort(key=functools.partial(alignmentKey, seqNamesToLists))
+    return [j for i in g for j in i]
+
+def allSortedRanges(opts, alignments, alignmentsB,
+                    seqRanges1, seqRangesB1, seqRanges2, seqRangesB2):
+    o1, oB1 = twoValuesFromOption(opts.strands1, ":")
+    o2, oB2 = twoValuesFromOption(opts.strands2, ":")
+    if o1 == "1" and o2 == "1":
+        raise Exception("the strand options have circular dependency")
+    seqRanges1 = list(rangesWithStrandInfo(seqRanges1, o1, alignments, 0))
+    seqRanges2 = list(rangesWithStrandInfo(seqRanges2, o2, alignments, 1))
+    seqRangesB1 = list(rangesWithStrandInfo(seqRangesB1, oB1, alignmentsB, 0))
+    seqRangesB2 = list(rangesWithStrandInfo(seqRangesB2, oB2, alignmentsB, 1))
+
+    o1, oB1 = twoValuesFromOption(opts.sort1, ":")
+    o2, oB2 = twoValuesFromOption(opts.sort2, ":")
+    if o1 == "3" and o2 == "3":
+        raise Exception("the sort options have circular dependency")
+    if o1 != "3":
+        s1 = mySortedRanges(seqRanges1, o1, None, None, None)
+    if o2 != "3":
+        s2 = mySortedRanges(seqRanges2, o2, None, None, None)
+    if o1 == "3":
+        s1 = mySortedRanges(seqRanges1, o1, 0, alignments, s2)
+    if o2 == "3":
+        s2 = mySortedRanges(seqRanges2, o2, 1, alignments, s1)
+    t1 = mySortedRanges(seqRangesB1, oB1, 0, alignmentsB, s2)
+    t2 = mySortedRanges(seqRangesB2, oB2, 1, alignmentsB, s1)
+    return s1 + t1, s2 + t2
+
+def prettyNum(n):
+    t = str(n)
+    groups = []
+    while t:
+        groups.append(t[-3:])
+        t = t[:-3]
+    return ",".join(reversed(groups))
 
 def sizeText(size):
     suffixes = "bp", "kb", "Mb", "Gb"
@@ -176,63 +378,79 @@ def sizeText(size):
         if size < j * 1000 or i == len(suffixes) - 1:
             return "%.0f" % (1.0 * size / j) + x
 
-def seqNameAndSizeText(seqName, seqSize):
-    return seqName + ": " + sizeText(seqSize)
+def labelText(seqRange, labelOpt):
+    seqName, beg, end, strandNum = seqRange
+    if labelOpt == 1:
+        return seqName + ": " + sizeText(end - beg)
+    if labelOpt == 2:
+        return seqName + ":" + prettyNum(beg) + ": " + sizeText(end - beg)
+    if labelOpt == 3:
+        return seqName + ":" + prettyNum(beg) + "-" + prettyNum(end)
+    return seqName
 
-def getSeqInfo(sortOpt, seqNames, seqLimits,
-               font, fontsize, image_mode, isShowSize):
-    '''Return miscellaneous information about the sequences.'''
-    if sortOpt == 1:
-        seqNames.sort(key=natural_sort_key)
-    seqSizes = [seqLimits[i][1] - seqLimits[i][0] for i in seqNames]
-    if sortOpt == 2:
-        seqRecords = sorted(zip(seqSizes, seqNames), reverse=True)
-        seqSizes = [i[0] for i in seqRecords]
-        seqNames = [i[1] for i in seqRecords]
-    if isShowSize:
-        seqLabels = map(seqNameAndSizeText, seqNames, seqSizes)
-    else:
-        seqLabels = seqNames
-    labelSizes = get_text_sizes(seqLabels, font, fontsize, image_mode)
-    margin = max(zip(*labelSizes)[1])  # maximum text height
-    return seqNames, seqSizes, seqLabels, labelSizes, margin
+def rangeLabels(seqRanges, labelOpt, font, fontsize, image_mode, textRot):
+    if fontsize:
+        image_size = 1, 1
+        im = Image.new(image_mode, image_size)
+        draw = ImageDraw.Draw(im)
+    x = y = 0
+    for r in seqRanges:
+        text = labelText(r, labelOpt)
+        if fontsize:
+            x, y = draw.textsize(text, font=font)
+            if textRot:
+                x, y = y, x
+        yield text, x, y, r[3]
+
+def dataFromRanges(sortedRanges, font, fontSize, imageMode, labelOpt, textRot):
+    for seqName, rangeBeg, rangeEnd, strandNum in sortedRanges:
+        out = [seqName, str(rangeBeg), str(rangeEnd)]
+        if strandNum > 0:
+            out.append(".+-"[strandNum])
+        warn("\t".join(out))
+    warn("")
+    rangeSizes = [e - b for n, b, e, s in sortedRanges]
+    labs = list(rangeLabels(sortedRanges, labelOpt, font, fontSize,
+                            imageMode, textRot))
+    margin = max(i[2] for i in labs)
+    # xxx the margin may be too big, because some labels may get omitted
+    return rangeSizes, labs, margin
 
 def div_ceil(x, y):
     '''Return x / y rounded up.'''
     q, r = divmod(x, y)
     return q + (r != 0)
 
-def tot_seq_pix(seq_sizes, bp_per_pix):
-    '''Return the total pixels needed for sequences of the given sizes.'''
-    return sum([div_ceil(i, bp_per_pix) for i in seq_sizes])
-
-def get_bp_per_pix(seq_sizes, pix_tween_seqs, pix_limit):
+def get_bp_per_pix(rangeSizes, pixTweenRanges, maxPixels):
     '''Get the minimum bp-per-pixel that fits in the size limit.'''
-    seq_num = len(seq_sizes)
-    seq_pix_limit = pix_limit - pix_tween_seqs * (seq_num - 1)
-    if seq_pix_limit < seq_num:
+    warn("choosing bp per pixel...")
+    numOfRanges = len(rangeSizes)
+    maxPixelsInRanges = maxPixels - pixTweenRanges * (numOfRanges - 1)
+    if maxPixelsInRanges < numOfRanges:
         raise Exception("can't fit the image: too many sequences?")
-    lower_bound = div_ceil(sum(seq_sizes), seq_pix_limit)
-    for bp_per_pix in itertools.count(lower_bound):  # slow linear search
-        if tot_seq_pix(seq_sizes, bp_per_pix) <= seq_pix_limit: break
-    return bp_per_pix
+    negLimit = -maxPixelsInRanges
+    negBpPerPix = sum(rangeSizes) // negLimit
+    while True:
+        if sum(i // negBpPerPix for i in rangeSizes) >= negLimit:
+            return -negBpPerPix
+        negBpPerPix -= 1
 
-def get_seq_starts(seq_pix, pix_tween_seqs, margin):
-    '''Get the start pixel for each sequence.'''
-    seq_starts = []
-    pix_tot = margin - pix_tween_seqs
-    for i in seq_pix:
-        pix_tot += pix_tween_seqs
-        seq_starts.append(pix_tot)
+def getRangePixBegs(rangePixLens, pixTweenRanges, margin):
+    '''Get the start pixel for each range.'''
+    rangePixBegs = []
+    pix_tot = margin - pixTweenRanges
+    for i in rangePixLens:
+        pix_tot += pixTweenRanges
+        rangePixBegs.append(pix_tot)
         pix_tot += i
-    return seq_starts
+    return rangePixBegs
 
-def get_pix_info(seq_sizes, bp_per_pix, pix_tween_seqs, margin):
-    '''Return pixel information about the sequences.'''
-    seq_pix = [div_ceil(i, bp_per_pix) for i in seq_sizes]
-    seq_starts = get_seq_starts(seq_pix, pix_tween_seqs, margin)
-    tot_pix = seq_starts[-1] + seq_pix[-1]
-    return seq_pix, seq_starts, tot_pix
+def pixelData(rangeSizes, bp_per_pix, pixTweenRanges, margin):
+    '''Return pixel information about the ranges.'''
+    rangePixLens = [div_ceil(i, bp_per_pix) for i in rangeSizes]
+    rangePixBegs = getRangePixBegs(rangePixLens, pixTweenRanges, margin)
+    tot_pix = rangePixBegs[-1] + rangePixLens[-1]
+    return rangePixBegs, rangePixLens, tot_pix
 
 def drawLineForward(hits, width, bp_per_pix, beg1, beg2, size):
     while True:
@@ -246,7 +464,6 @@ def drawLineForward(hits, width, bp_per_pix, beg1, beg2, size):
         size -= next_pix
 
 def drawLineReverse(hits, width, bp_per_pix, beg1, beg2, size):
-    beg2 = -1 - beg2
     while True:
         q1, r1 = divmod(beg1, bp_per_pix)
         q2, r2 = divmod(beg2, bp_per_pix)
@@ -257,210 +474,352 @@ def drawLineReverse(hits, width, bp_per_pix, beg1, beg2, size):
         beg2 -= next_pix
         size -= next_pix
 
-def alignmentPixels(width, height, alignments, bp_per_pix, origins1, origins2):
+def strandAndOrigin(ranges, beg, size):
+    isReverseStrand = (beg < 0)
+    if isReverseStrand:
+        beg = -(beg + size)
+    for rangeBeg, rangeEnd, isReverseRange, origin in ranges:
+        if rangeEnd > beg:  # assumes the ranges are sorted
+            return (isReverseStrand != isReverseRange), origin
+
+def alignmentPixels(width, height, alignments, bp_per_pix,
+                    rangeDict1, rangeDict2):
     hits = [0] * (width * height)  # the image data
     for seq1, seq2, blocks in alignments:
-        ori1 = origins1[seq1]
-        ori2 = origins2[seq2]
+        beg1, beg2, size = blocks[0]
+        isReverse1, ori1 = strandAndOrigin(rangeDict1[seq1], beg1, size)
+        isReverse2, ori2 = strandAndOrigin(rangeDict2[seq2], beg2, size)
         for beg1, beg2, size in blocks:
-            if beg1 < 0:
+            if isReverse1:
                 beg1 = -(beg1 + size)
                 beg2 = -(beg2 + size)
-            if beg2 >= 0:
+            if isReverse1 == isReverse2:
                 drawLineForward(hits, width, bp_per_pix,
-                                beg1 + ori1, beg2 + ori2, size)
+                                ori1 + beg1, ori2 + beg2, size)
             else:
                 drawLineReverse(hits, width, bp_per_pix,
-                                beg1 + ori1, beg2 - ori2, size)
+                                ori1 + beg1, ori2 - beg2 - 1, size)
     return hits
 
 def expandedSeqDict(seqDict):
     '''Allow lookup by short sequence names, e.g. chr7 as well as hg19.chr7.'''
-    newDict = {}
+    newDict = seqDict.copy()
     for name, x in seqDict.items():
-        base = name.split(".")[-1]
-        newDict[name] = x
-        newDict[base] = x
+        if "." in name:
+            base = name.split(".")[-1]
+            if base in newDict:  # an ambiguous case was found:
+                return seqDict   # so give up completely
+            newDict[base] = x
     return newDict
 
-def readBed(fileName, seqLimits):
-    if not fileName: return
+def readBed(fileName, rangeDict):
     for line in myOpen(fileName):
         w = line.split()
         if not w: continue
         seqName = w[0]
-        if seqName not in seqLimits: continue
-        cropBeg, cropEnd = seqLimits[seqName]
+        if seqName not in rangeDict: continue
         beg = int(w[1])
         end = int(w[2])
-        b = max(beg, cropBeg)
-        e = min(end, cropEnd)
-        if b >= e: continue
-        if len(w) > 8:
-            color = tuple(map(int, w[8].split(",")))
-        elif len(w) > 5:
-            if   w[5] == "+": color = 255, 244, 244
-            elif w[5] == "-": color = 244, 244, 255
-            else:             color = 255, 228, 255
+        layer = 900
+        color = "#fbf"
+        if len(w) > 4:
+            if w[4] != ".":
+                layer = float(w[4])
+            if len(w) > 5:
+                if len(w) > 8 and w[8].count(",") == 2:
+                    color = "rgb(" + w[8] + ")"
+                else:
+                    strand = w[5]
+                    isRev = rangeDict[seqName][0][2]
+                    if strand == "+" and not isRev or strand == "-" and isRev:
+                        color = "#ffe8e8"
+                    if strand == "-" and not isRev or strand == "+" and isRev:
+                        color = "#e8e8ff"
+        yield layer, color, seqName, beg, end
+
+def commaSeparatedInts(text):
+    return map(int, text.rstrip(",").split(","))
+
+def readGenePred(opts, fileName, rangeDict):
+    for line in myOpen(fileName):
+        fields = line.split()
+        if not fields: continue
+        if fields[2] not in "+-": fields = fields[1:]
+        seqName = fields[1]
+        if seqName not in rangeDict: continue
+        #strand = fields[2]
+        cdsBeg = int(fields[5])
+        cdsEnd = int(fields[6])
+        exonBegs = commaSeparatedInts(fields[8])
+        exonEnds = commaSeparatedInts(fields[9])
+        for beg, end in zip(exonBegs, exonEnds):
+            yield 300, opts.exon_color, seqName, beg, end
+            b = max(beg, cdsBeg)
+            e = min(end, cdsEnd)
+            if b < e: yield 400, opts.cds_color, seqName, b, e
+
+def readRmsk(fileName, rangeDict):
+    for line in myOpen(fileName):
+        fields = line.split()
+        if len(fields) == 17:  # rmsk.txt
+            seqName = fields[5]
+            if seqName not in rangeDict: continue  # do this ASAP for speed
+            beg = int(fields[6])
+            end = int(fields[7])
+            strand = fields[9]
+            repeatClass = fields[11]
+        elif len(fields) == 15:  # .out
+            seqName = fields[4]
+            if seqName not in rangeDict: continue
+            beg = int(fields[5]) - 1
+            end = int(fields[6])
+            strand = fields[8]
+            repeatClass = fields[10]
         else:
-            color = 255, 228, 255
-        yield seqName, b, e, color
+            continue
+        if repeatClass in ("Low_complexity", "Simple_repeat"):
+            yield 200, "#fbf", seqName, beg, end
+        elif (strand == "+") != rangeDict[seqName][0][2]:
+            yield 100, "#ffe8e8", seqName, beg, end
+        else:
+            yield 100, "#e8e8ff", seqName, beg, end
 
 def isExtraFirstGapField(fields):
     return fields[4].isdigit()
 
-def readGaps(fileName, seqLimits):
+def readGaps(opts, fileName, rangeDict):
     '''Read locations of unsequenced gaps, from an agp or gap file.'''
-    if not fileName: return
     for line in myOpen(fileName):
         w = line.split()
         if not w or w[0][0] == "#": continue
         if isExtraFirstGapField(w): w = w[1:]
         if w[4] not in "NU": continue
         seqName = w[0]
-        if seqName not in seqLimits: continue
-        cropBeg, cropEnd = seqLimits[seqName]
+        if seqName not in rangeDict: continue
         end = int(w[2])
         beg = end - int(w[5])  # zero-based coordinate
-        b = max(beg, cropBeg)
-        e = min(end, cropEnd)
-        if b >= e: continue
-        bridgedText = w[7]
-        yield seqName, b, e, bridgedText
+        if w[7] == "yes":
+            yield 3000, opts.bridged_color, seqName, beg, end
+        else:
+            yield 2000, opts.unbridged_color, seqName, beg, end
 
-def drawAnnotations(im, beds, origins, margin, limit, isTop, bp_per_pix):
-    # XXX no consideration of different-color overlaps
-    for seqName, beg, end, color in beds:
-        ori = origins[seqName]
-        b = (ori + beg) // bp_per_pix
-        e = div_ceil(ori + end, bp_per_pix)
-        if isTop: box = b, margin, e, limit
-        else:     box = margin, b, limit, e
+def bedBoxes(beds, rangeDict, margin, edge, isTop, bpPerPix):
+    for layer, color, seqName, bedBeg, bedEnd in beds:
+        for rangeBeg, rangeEnd, isReverseRange, origin in rangeDict[seqName]:
+            beg = max(bedBeg, rangeBeg)
+            end = min(bedEnd, rangeEnd)
+            if beg >= end: continue
+            if isReverseRange:
+                beg, end = -end, -beg
+            if layer <= 1000:
+                # include partly-covered pixels
+                b = (origin + beg) // bpPerPix
+                e = div_ceil(origin + end, bpPerPix)
+            else:
+                # exclude partly-covered pixels
+                b = div_ceil(origin + beg, bpPerPix)
+                e = (origin + end) // bpPerPix
+                if e <= b: continue
+                if bedEnd >= rangeEnd:  # include partly-covered end pixels
+                    if isReverseRange:
+                        b = (origin + beg) // bpPerPix
+                    else:
+                        e = div_ceil(origin + end, bpPerPix)
+            if isTop:
+                box = b, margin, e, edge
+            else:
+                box = margin, b, edge, e
+            yield layer, color, box
+
+def drawAnnotations(im, boxes):
+    # xxx use partial transparency for different-color overlaps?
+    for layer, color, box in boxes:
         im.paste(color, box)
 
-def drawUnsequencedGaps(im, gaps, origins, margin, limit, isTop, bridgedText,
-                        bp_per_pix, color):
-    '''Draw rectangles representing unsequenced gaps.'''
-    for seqName, beg, end, b in gaps:
-        if b != bridgedText: continue
-        ori = origins[seqName]
-        b = div_ceil(ori + beg, bp_per_pix)  # use fully-covered pixels only
-        e = (ori + end) // bp_per_pix
-        if e <= b: continue
-        if isTop: box = b, margin, e, limit
-        else:     box = margin, b, limit, e
-        im.paste(color, box)
+def placedLabels(labels, rangePixBegs, rangePixLens, beg, end):
+    '''Return axis labels with endpoint & sort-order information.'''
+    maxWidth = end - beg
+    for i, j, k in zip(labels, rangePixBegs, rangePixLens):
+        text, textWidth, textHeight, strandNum = i
+        if textWidth > maxWidth:
+            continue
+        labelBeg = j + (k - textWidth) // 2
+        labelEnd = labelBeg + textWidth
+        sortKey = textWidth - k
+        if labelBeg < beg:
+            sortKey += maxWidth * (beg - labelBeg)
+            labelBeg = beg
+            labelEnd = beg + textWidth
+        if labelEnd > end:
+            sortKey += maxWidth * (labelEnd - end)
+            labelEnd = end
+            labelBeg = end - textWidth
+        yield sortKey, labelBeg, labelEnd, text, textHeight, strandNum
 
-def make_label(text, text_size, range_start, range_size):
-    '''Return an axis label with endpoint & sort-order information.'''
-    text_width  = text_size[0]
-    label_start = range_start + (range_size - text_width) // 2
-    label_end   = label_start + text_width
-    sort_key    = text_width - range_size
-    return sort_key, label_start, label_end, text
-
-def get_nonoverlapping_labels(labels, label_space):
+def nonoverlappingLabels(labels, minPixTweenLabels):
     '''Get a subset of non-overlapping axis labels, greedily.'''
-    nonoverlapping_labels = []
+    out = []
     for i in labels:
-        if True not in [i[1] < j[2] + label_space and j[1] < i[2] + label_space
-                        for j in nonoverlapping_labels]:
-            nonoverlapping_labels.append(i)
-    return nonoverlapping_labels
+        beg = i[1] - minPixTweenLabels
+        end = i[2] + minPixTweenLabels
+        if all(j[2] <= beg or j[1] >= end for j in out):
+            out.append(i)
+    return out
 
-def get_axis_image(seqNames, name_sizes, seq_starts, seq_pix,
-                   font, image_mode, opts):
+def axisImage(labels, rangePixBegs, rangePixLens, textRot,
+              textAln, font, image_mode, opts):
     '''Make an image of axis labels.'''
-    min_pos = seq_starts[0]
-    max_pos = seq_starts[-1] + seq_pix[-1]
-    height = max(zip(*name_sizes)[1])
-    labels = map(make_label, seqNames, name_sizes, seq_starts, seq_pix)
-    labels = [i for i in labels if i[1] >= min_pos and i[2] <= max_pos]
-    labels.sort()
-    labels = get_nonoverlapping_labels(labels, opts.label_space)
-    image_size = max_pos, height
-    im = Image.new(image_mode, image_size, opts.border_color)
+    beg = rangePixBegs[0]
+    end = rangePixBegs[-1] + rangePixLens[-1]
+    margin = max(i[2] for i in labels)
+    labels = sorted(placedLabels(labels, rangePixBegs, rangePixLens, beg, end))
+    minPixTweenLabels = 0 if textRot else opts.label_space
+    labels = nonoverlappingLabels(labels, minPixTweenLabels)
+    image_size = (margin, end) if textRot else (end, margin)
+    im = Image.new(image_mode, image_size, opts.margin_color)
     draw = ImageDraw.Draw(im)
-    for i in labels:
-        position = i[1], 0
-        draw.text(position, i[3], font=font, fill=opts.text_color)
+    for sortKey, labelBeg, labelEnd, text, textHeight, strandNum in labels:
+        base = margin - textHeight if textAln else 0
+        position = (base, labelBeg) if textRot else (labelBeg, base)
+        fill = ("black", opts.forwardcolor, opts.reversecolor)[strandNum]
+        draw.text(position, text, font=font, fill=fill)
     return im
 
-def seqOrigins(seqNames, seq_starts, seqLimits, bp_per_pix):
-    for i, j in zip(seqNames, seq_starts):
-        yield i, bp_per_pix * j - seqLimits[i][0]
+def rangesWithOrigins(sortedRanges, rangePixBegs, rangePixLens, bpPerPix):
+    for i, j, k in zip(sortedRanges, rangePixBegs, rangePixLens):
+        seqName, rangeBeg, rangeEnd, strandNum = i
+        isReverseRange = (strandNum > 1)
+        if isReverseRange:
+            origin = bpPerPix * (j + k) + rangeBeg
+        else:
+            origin = bpPerPix * j - rangeBeg
+        yield seqName, (rangeBeg, rangeEnd, isReverseRange, origin)
+
+def rangesPerSeq(sortedRanges, rangePixBegs, rangePixLens, bpPerPix):
+    a = rangesWithOrigins(sortedRanges, rangePixBegs, rangePixLens, bpPerPix)
+    for k, v in itertools.groupby(a, itemgetter(0)):
+        yield k, sorted(i[1] for i in v)
+
+def getFont(opts):
+    if opts.fontfile:
+        return ImageFont.truetype(opts.fontfile, opts.fontsize)
+    fileNames = []
+    try:
+        x = ["fc-match", "-f%{file}", "arial"]
+        p = subprocess.Popen(x, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+        fileNames.append(out)
+    except OSError as e:
+        warn("fc-match error: " + str(e))
+    fileNames.append("/Library/Fonts/Arial.ttf")  # for Mac
+    for i in fileNames:
+        try:
+            font = ImageFont.truetype(i, opts.fontsize)
+            warn("font: " + i)
+            return font
+        except IOError as e:
+            warn("font load error: " + str(e))
+    return ImageFont.load_default()
 
 def lastDotplot(opts, args):
-    if opts.fontfile:  font = ImageFont.truetype(opts.fontfile, opts.fontsize)
-    else:              font = ImageFont.load_default()
-
+    font = getFont(opts)
     image_mode = 'RGB'
     forward_color = ImageColor.getcolor(opts.forwardcolor, image_mode)
     reverse_color = ImageColor.getcolor(opts.reversecolor, image_mode)
     zipped_colors = zip(forward_color, reverse_color)
     overlap_color = tuple([(i + j) // 2 for i, j in zipped_colors])
 
+    maxGap1, maxGapB1 = twoValuesFromOption(opts.max_gap1, ":")
+    maxGap2, maxGapB2 = twoValuesFromOption(opts.max_gap2, ":")
+
     warn("reading alignments...")
-    alignmentInfo = readAlignments(args[0], opts)
-    alignments, seqNames1, seqNames2, seqLimits1, seqLimits2 = alignmentInfo
-    warn("done")
+    alnData = readAlignments(args[0], opts)
+    alignments, seqRanges1, coverDict1, seqRanges2, coverDict2 = alnData
     if not alignments: raise Exception("there are no alignments")
+    warn("cutting...")
+    coverDict1 = dict(mergedRangesPerSeq(coverDict1))
+    coverDict2 = dict(mergedRangesPerSeq(coverDict2))
+    minAlignedBases = min(coveredLength(coverDict1), coveredLength(coverDict2))
+    pad = int(opts.pad * minAlignedBases)
+    cutRanges1 = list(trimmed(seqRanges1, coverDict1, minAlignedBases,
+                              maxGap1, pad, pad))
+    cutRanges2 = list(trimmed(seqRanges2, coverDict2, minAlignedBases,
+                              maxGap2, pad, pad))
 
-    i1 = getSeqInfo(opts.sort1, seqNames1, seqLimits1,
-                    font, opts.fontsize, image_mode, opts.lengths1)
-    seqNames1, seqSizes1, seqLabels1, labelSizes1, margin1 = i1
+    warn("reading secondary alignments...")
+    alnDataB = readSecondaryAlignments(opts, cutRanges1, cutRanges2)
+    alignmentsB, seqRangesB1, coverDictB1, seqRangesB2, coverDictB2 = alnDataB
+    warn("cutting...")
+    coverDictB1 = dict(mergedRangesPerSeq(coverDictB1))
+    coverDictB2 = dict(mergedRangesPerSeq(coverDictB2))
+    cutRangesB1 = trimmed(seqRangesB1, coverDictB1, minAlignedBases,
+                          maxGapB1, 0, 0)
+    cutRangesB2 = trimmed(seqRangesB2, coverDictB2, minAlignedBases,
+                          maxGapB2, 0, 0)
 
-    i2 = getSeqInfo(opts.sort2, seqNames2, seqLimits2,
-                    font, opts.fontsize, image_mode, opts.lengths2)
-    seqNames2, seqSizes2, seqLabels2, labelSizes2, margin2 = i2
+    warn("sorting...")
+    sortOut = allSortedRanges(opts, alignments, alignmentsB,
+                              cutRanges1, cutRangesB1, cutRanges2, cutRangesB2)
+    sortedRanges1, sortedRanges2 = sortOut
 
-    warn("choosing bp per pixel...")
-    pix_limit1 = opts.width  - margin1
-    pix_limit2 = opts.height - margin2
-    bp_per_pix1 = get_bp_per_pix(seqSizes1, opts.border_pixels, pix_limit1)
-    bp_per_pix2 = get_bp_per_pix(seqSizes2, opts.border_pixels, pix_limit2)
-    bp_per_pix = max(bp_per_pix1, bp_per_pix2)
-    warn("bp per pixel = " + str(bp_per_pix))
+    textRot1 = "vertical".startswith(opts.rot1)
+    i1 = dataFromRanges(sortedRanges1, font,
+                        opts.fontsize, image_mode, opts.labels1, textRot1)
+    rangeSizes1, labelData1, tMargin = i1
 
-    seq_pix1, seq_starts1, width  = get_pix_info(seqSizes1, bp_per_pix,
-                                                 opts.border_pixels, margin1)
-    seq_pix2, seq_starts2, height = get_pix_info(seqSizes2, bp_per_pix,
-                                                 opts.border_pixels, margin2)
+    textRot2 = "horizontal".startswith(opts.rot2)
+    i2 = dataFromRanges(sortedRanges2, font,
+                        opts.fontsize, image_mode, opts.labels2, textRot2)
+    rangeSizes2, labelData2, lMargin = i2
+
+    maxPixels1 = opts.width  - lMargin
+    maxPixels2 = opts.height - tMargin
+    bpPerPix1 = get_bp_per_pix(rangeSizes1, opts.border_pixels, maxPixels1)
+    bpPerPix2 = get_bp_per_pix(rangeSizes2, opts.border_pixels, maxPixels2)
+    bpPerPix = max(bpPerPix1, bpPerPix2)
+    warn("bp per pixel = " + str(bpPerPix))
+
+    p1 = pixelData(rangeSizes1, bpPerPix, opts.border_pixels, lMargin)
+    rangePixBegs1, rangePixLens1, width = p1
+    rangeDict1 = dict(rangesPerSeq(sortedRanges1, rangePixBegs1,
+                                   rangePixLens1, bpPerPix))
+
+    p2 = pixelData(rangeSizes2, bpPerPix, opts.border_pixels, tMargin)
+    rangePixBegs2, rangePixLens2, height = p2
+    rangeDict2 = dict(rangesPerSeq(sortedRanges2, rangePixBegs2,
+                                   rangePixLens2, bpPerPix))
+
     warn("width:  " + str(width))
     warn("height: " + str(height))
 
-    origins1 = dict(seqOrigins(seqNames1, seq_starts1, seqLimits1, bp_per_pix))
-    origins2 = dict(seqOrigins(seqNames2, seq_starts2, seqLimits2, bp_per_pix))
-
     warn("processing alignments...")
-    hits = alignmentPixels(width, height, alignments, bp_per_pix,
-                           origins1, origins2)
-    warn("done")
+    hits = alignmentPixels(width, height, alignments + alignmentsB, bpPerPix,
+                           rangeDict1, rangeDict2)
+
+    warn("reading annotations...")
+
+    rangeDict1 = expandedSeqDict(rangeDict1)
+    beds1 = itertools.chain(readBed(opts.bed1, rangeDict1),
+                            readRmsk(opts.rmsk1, rangeDict1),
+                            readGenePred(opts, opts.genePred1, rangeDict1),
+                            readGaps(opts, opts.gap1, rangeDict1))
+    b1 = bedBoxes(beds1, rangeDict1, tMargin, height, True, bpPerPix)
+
+    rangeDict2 = expandedSeqDict(rangeDict2)
+    beds2 = itertools.chain(readBed(opts.bed2, rangeDict2),
+                            readRmsk(opts.rmsk2, rangeDict2),
+                            readGenePred(opts, opts.genePred2, rangeDict2),
+                            readGaps(opts, opts.gap2, rangeDict2))
+    b2 = bedBoxes(beds2, rangeDict2, lMargin, width, False, bpPerPix)
+
+    boxes = sorted(itertools.chain(b1, b2))
+
+    warn("drawing...")
 
     image_size = width, height
     im = Image.new(image_mode, image_size, opts.background_color)
 
-    seqLimits1 = expandedSeqDict(seqLimits1)
-    seqLimits2 = expandedSeqDict(seqLimits2)
-    origins1 = expandedSeqDict(origins1)
-    origins2 = expandedSeqDict(origins2)
-
-    beds1 = list(readBed(opts.bed1, seqLimits1))
-    beds2 = list(readBed(opts.bed2, seqLimits2))
-    drawAnnotations(im, beds1, origins1, margin2, height, True, bp_per_pix)
-    drawAnnotations(im, beds2, origins2, margin1, width, False, bp_per_pix)
-
-    gaps1 = list(readGaps(opts.gap1, seqLimits1))
-    gaps2 = list(readGaps(opts.gap2, seqLimits2))
-    # draw bridged gaps first, then unbridged gaps on top:
-    drawUnsequencedGaps(im, gaps1, origins1, margin2, height, True, "yes",
-                        bp_per_pix, opts.bridged_color)
-    drawUnsequencedGaps(im, gaps2, origins2, margin1, width, False, "yes",
-                        bp_per_pix, opts.bridged_color)
-    drawUnsequencedGaps(im, gaps1, origins1, margin2, height, True, "no",
-                        bp_per_pix, opts.unbridged_color)
-    drawUnsequencedGaps(im, gaps2, origins2, margin1, width, False, "no",
-                        bp_per_pix, opts.unbridged_color)
+    drawAnnotations(im, boxes)
 
     for i in range(height):
         for j in range(width):
@@ -471,20 +830,23 @@ def lastDotplot(opts, args):
             elif store_value == 3: im.putpixel(xy, overlap_color)
 
     if opts.fontsize != 0:
-        axis1 = get_axis_image(seqLabels1, labelSizes1, seq_starts1, seq_pix1,
-                               font, image_mode, opts)
-        axis2 = get_axis_image(seqLabels2, labelSizes2, seq_starts2, seq_pix2,
-                               font, image_mode, opts)
-        axis2 = axis2.transpose(Image.ROTATE_270)  # !!! bug hotspot
+        axis1 = axisImage(labelData1, rangePixBegs1, rangePixLens1,
+                          textRot1, False, font, image_mode, opts)
+        if textRot1:
+            axis1 = axis1.transpose(Image.ROTATE_90)
+        axis2 = axisImage(labelData2, rangePixBegs2, rangePixLens2,
+                          textRot2, textRot2, font, image_mode, opts)
+        if not textRot2:
+            axis2 = axis2.transpose(Image.ROTATE_270)
         im.paste(axis1, (0, 0))
         im.paste(axis2, (0, 0))
 
-    for i in seq_starts1[1:]:
-        box = i - opts.border_pixels, margin2, i, height
+    for i in rangePixBegs1[1:]:
+        box = i - opts.border_pixels, tMargin, i, height
         im.paste(opts.border_color, box)
 
-    for i in seq_starts2[1:]:
-        box = margin1, i - opts.border_pixels, width, i
+    for i in rangePixBegs2[1:]:
+        box = lMargin, i - opts.border_pixels, width, i
         im.paste(opts.border_color, box)
 
     im.save(args[1])
@@ -496,6 +858,8 @@ if __name__ == "__main__":
    or: ..."""
     description = "Draw a dotplot of pair-wise sequence alignments in MAF or tabular format."
     op = optparse.OptionParser(usage=usage, description=description)
+    op.add_option("-v", "--verbose", action="count",
+                  help="show progress messages & data about the plot")
     op.add_option("-1", "--seq1", metavar="PATTERN", action="append",
                   default=[],
                   help="which sequences to show from the 1st genome")
@@ -511,35 +875,73 @@ if __name__ == "__main__":
                   help="color for forward alignments (default: %default)")
     op.add_option("-r", "--reversecolor", metavar="COLOR", default="blue",
                   help="color for reverse alignments (default: %default)")
-    op.add_option("--sort1", type="int", default=1, metavar="N",
+    op.add_option("--alignments", metavar="FILE", help="secondary alignments")
+    op.add_option("--sort1", default="1", metavar="N",
                   help="genome1 sequence order: 0=input order, 1=name order, "
-                  "2=length order (default=%default)")
-    op.add_option("--sort2", type="int", default=1, metavar="N",
+                  "2=length order, 3=alignment order (default=%default)")
+    op.add_option("--sort2", default="1", metavar="N",
                   help="genome2 sequence order: 0=input order, 1=name order, "
-                  "2=length order (default=%default)")
-    op.add_option("--trim1", action="store_true",
-                  help="trim unaligned sequence flanks from the 1st genome")
-    op.add_option("--trim2", action="store_true",
-                  help="trim unaligned sequence flanks from the 2nd genome")
+                  "2=length order, 3=alignment order (default=%default)")
+    op.add_option("--strands1", default="0", metavar="N", help=
+                  "genome1 sequence orientation: 0=forward orientation, "
+                  "1=alignment orientation (default=%default)")
+    op.add_option("--strands2", default="0", metavar="N", help=
+                  "genome2 sequence orientation: 0=forward orientation, "
+                  "1=alignment orientation (default=%default)")
+    op.add_option("--max-gap1", metavar="FRAC", default="0.5,2", help=
+                  "maximum unaligned (end,mid) gap in genome1: "
+                  "fraction of aligned length (default=%default)")
+    op.add_option("--max-gap2", metavar="FRAC", default="0.5,2", help=
+                  "maximum unaligned (end,mid) gap in genome2: "
+                  "fraction of aligned length (default=%default)")
+    op.add_option("--pad", metavar="FRAC", type="float", default=0.04, help=
+                  "pad length when cutting unaligned gaps: "
+                  "fraction of aligned length (default=%default)")
     op.add_option("--border-pixels", metavar="INT", type="int", default=1,
                   help="number of pixels between sequences (default=%default)")
-    op.add_option("--border-color", metavar="COLOR", default="#dcdcdc",
+    op.add_option("--border-color", metavar="COLOR", default="black",
                   help="color for pixels between sequences (default=%default)")
-    # xxx --margin-color?
-    op.add_option("--bed1", metavar="FILE",
-                  help="read genome1 annotations from bed file")
-    op.add_option("--bed2", metavar="FILE",
-                  help="read genome2 annotations from bed file")
+    # --break-color and/or --break-pixels for intra-sequence breaks?
+    op.add_option("--margin-color", metavar="COLOR", default="#dcdcdc",
+                  help="margin color")
 
     og = optparse.OptionGroup(op, "Text options")
     og.add_option("-f", "--fontfile", metavar="FILE",
                   help="TrueType or OpenType font file")
-    og.add_option("-s", "--fontsize", metavar="SIZE", type="int", default=11,
+    og.add_option("-s", "--fontsize", metavar="SIZE", type="int", default=14,
                   help="TrueType or OpenType font size (default: %default)")
-    og.add_option("--lengths1", action="store_true",
-                  help="show sequence lengths for the 1st (horizontal) genome")
-    og.add_option("--lengths2", action="store_true",
-                  help="show sequence lengths for the 2nd (vertical) genome")
+    og.add_option("--labels1", type="int", default=0, metavar="N", help=
+                  "genome1 labels: 0=name, 1=name:length, "
+                  "2=name:start:length, 3=name:start-end (default=%default)")
+    og.add_option("--labels2", type="int", default=0, metavar="N", help=
+                  "genome2 labels: 0=name, 1=name:length, "
+                  "2=name:start:length, 3=name:start-end (default=%default)")
+    og.add_option("--rot1", metavar="ROT", default="h",
+                  help="text rotation for the 1st genome (default=%default)")
+    og.add_option("--rot2", metavar="ROT", default="v",
+                  help="text rotation for the 2nd genome (default=%default)")
+    op.add_option_group(og)
+
+    og = optparse.OptionGroup(op, "Annotation options")
+    og.add_option("--bed1", metavar="FILE",
+                  help="read genome1 annotations from BED file")
+    og.add_option("--bed2", metavar="FILE",
+                  help="read genome2 annotations from BED file")
+    og.add_option("--rmsk1", metavar="FILE", help="read genome1 repeats from "
+                  "RepeatMasker .out or rmsk.txt file")
+    og.add_option("--rmsk2", metavar="FILE", help="read genome2 repeats from "
+                  "RepeatMasker .out or rmsk.txt file")
+    op.add_option_group(og)
+
+    og = optparse.OptionGroup(op, "Gene options")
+    og.add_option("--genePred1", metavar="FILE",
+                  help="read genome1 genes from genePred file")
+    og.add_option("--genePred2", metavar="FILE",
+                  help="read genome2 genes from genePred file")
+    og.add_option("--exon-color", metavar="COLOR", default="PaleGreen",
+                  help="color for exons (default=%default)")
+    og.add_option("--cds-color", metavar="COLOR", default="LimeGreen",
+                  help="color for protein-coding regions (default=%default)")
     op.add_option_group(og)
 
     og = optparse.OptionGroup(op, "Unsequenced gap options")
@@ -549,18 +951,17 @@ if __name__ == "__main__":
                   help="read genome2 unsequenced gaps from agp or gap file")
     og.add_option("--bridged-color", metavar="COLOR", default="yellow",
                   help="color for bridged gaps (default: %default)")
-    og.add_option("--unbridged-color", metavar="COLOR", default="pink",
+    og.add_option("--unbridged-color", metavar="COLOR", default="orange",
                   help="color for unbridged gaps (default: %default)")
     op.add_option_group(og)
     (opts, args) = op.parse_args()
     if len(args) != 2: op.error("2 arguments needed")
 
-    opts.text_color = "black"
     opts.background_color = "white"
     opts.label_space = 5     # minimum number of pixels between axis labels
 
     try: lastDotplot(opts, args)
     except KeyboardInterrupt: pass  # avoid silly error message
-    except Exception, e:
+    except Exception as e:
         prog = os.path.basename(sys.argv[0])
         sys.exit(prog + ": error: " + str(e))

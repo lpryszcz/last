@@ -17,16 +17,23 @@
 
 namespace cbrc{
 
+typedef unsigned char uchar;
+
 class MultiSequence{
  public:
   typedef LAST_INT_TYPE indexT;
-  typedef unsigned char uchar;
 
   // initialize with leftmost delimiter pad, ready for appending sequences
   void initForAppending( indexT padSizeIn );
 
   // re-initialize, but keep the last sequence if it is unfinished
   void reinitForAppending();
+
+  void eraseAllButTheLastSequence() {
+    ends.v.pop_back();
+    reinitForAppending();
+    ends.v.push_back(seq.v.size());
+  }
 
   // read seqCount finished sequences, and their names, from binary files
   void fromFiles( const std::string& baseName, indexT seqCount,
@@ -52,20 +59,11 @@ class MultiSequence{
                                 const uchar* lettersToNumbers,
                                 bool isMaskLowercase );
 
-  // finish the last sequence: add final pad and end coordinate
-  void finish();
-
-  // unfinish the last sequence: remove final pad and end coordinate
-  void unfinish();
-
   // did we finish reading the last sequence?
   bool isFinished() const{ return ends.size() == nameEnds.size(); }
 
   // how many finished sequences are there?
   indexT finishedSequences() const{ return ends.size() - 1; }
-
-  // total length of finished sequences plus delimiters
-  indexT finishedSize() const{ return ends.back(); }
 
   // total length of finished and unfinished sequences plus delimiters
   size_t unfinishedSize() const{ return seq.size(); }
@@ -79,7 +77,21 @@ class MultiSequence{
   indexT padEnd( indexT seqNum ) const{ return ends[seqNum+1]; }
   indexT seqLen( indexT seqNum ) const{ return seqEnd(seqNum)-seqBeg(seqNum); }
   indexT padLen( indexT seqNum ) const{ return padEnd(seqNum)-padBeg(seqNum); }
-  std::string seqName( indexT seqNum ) const;
+
+  std::string seqName(indexT seqNum) const {
+    const char *n = names.begin();
+    indexT b = nameEnds[seqNum];
+    indexT e = nameEnds[seqNum + 1];
+    if (e > b && n[e-1] <= ' ') --e;
+    return std::string(n + b, n + e);
+  }
+
+  char strand(indexT seqNum) const {
+    const char *n = names.begin();
+    indexT b = nameEnds[seqNum];
+    indexT e = nameEnds[seqNum + 1];
+    return (e > b && n[e-1] == '\t') ? '-' : '+';
+  }
 
   // get a pointer to the start of the sequence data
   const uchar* seqReader() const{ return seq.begin(); }
@@ -93,18 +105,16 @@ class MultiSequence{
         : reinterpret_cast< const ScoreMatrixRow* >( &pssm[0] );
   }
 
-  /* */ ScoreMatrixRow* pssmWriter()      {
-    return pssm.empty() ? 0
-        : reinterpret_cast<       ScoreMatrixRow* >( &pssm[0] );
-  }
-
   // get a pointer to the start of the quality data
   const uchar* qualityReader() const{ return qualityScores.begin(); }
-  /***/ uchar* qualityWriter()      { return &qualityScores.v[0]; }
 
   // How many quality scores are there per letter?  There might be
   // none at all, one per letter, or several (e.g. 4) per letter.
   size_t qualsPerLetter() const { return qualityScoresPerLetter; }
+
+  void reverseComplementOneSequence(indexT seqNum, const uchar *complement);
+
+  void duplicateOneSequence(indexT seqNum);
 
  private:
   indexT padSize;  // number of delimiter chars between sequences
@@ -130,11 +140,38 @@ class MultiSequence{
   // read the letters above PSSM columns, so we know which column is which
   std::istream& readPssmHeader( std::istream& stream );
 
-  // add a new sequence name
-  void addName( std::string& name );
+  void finishName() {  // finish adding a sequence name: store its end coord
+    nameEnds.v.push_back(names.v.size());
+    if (nameEnds.v.back() < names.v.size()) {
+      throw std::runtime_error("the sequence names are too long");
+    }
+  }
 
-  // can we finish the last sequence and stay within the memory limit?
-  bool isFinishable( indexT maxSeqLen ) const;
+  void addName(const std::string &name) {  // add a new sequence name
+    names.v.insert(names.v.end(), name.begin(), name.end());
+    names.v.push_back('\n');
+    finishName();
+  }
+
+  void appendQualPad() {  // add delimiter to the end of the quality scores
+    uchar padQualityScore = 64;  // should never be used, but a valid value
+    size_t s = padSize * qualityScoresPerLetter;
+    qualityScores.v.insert(qualityScores.v.end(), s, padQualityScore);
+  }
+
+  void appendPssmPad() {  // add delimiter to the end of the PSSM
+    pssm.insert(pssm.end(), padSize * scoreMatrixRowSize, -INF);
+  }
+
+  bool isRoomToAppendPad(indexT maxSeqLen) const {
+    return seq.v.size() <= maxSeqLen && padSize <= maxSeqLen - seq.v.size();
+  }
+
+  // finish the last sequence: add final pad and end coordinate
+  void finish() {
+    seq.v.insert(seq.v.end(), padSize, ' ');
+    ends.v.push_back(seq.v.size());
+  }
 };
 
 // Divide the sequences into a given number of roughly-equally-sized
@@ -143,7 +180,7 @@ inline size_t firstSequenceInChunk(const MultiSequence &m,
 				   size_t numOfChunks, size_t chunkNum) {
   size_t numOfSeqs = m.finishedSequences();
   size_t beg = m.seqBeg(0);
-  size_t end = m.padEnd(numOfSeqs - 1) - 1;
+  size_t end = m.seqBeg(numOfSeqs) - 1;
   unsigned long long len = end - beg;  // try to avoid overflow
   size_t pos = beg + len * chunkNum / numOfChunks;
   size_t seqNum = m.whichSequence(pos);
@@ -152,5 +189,6 @@ inline size_t firstSequenceInChunk(const MultiSequence &m,
   return (begDistance < endDistance) ? seqNum : seqNum + 1;
 }
 
-}  // end namespace cbrc
-#endif  // MULTISEQUENCE_HH
+}
+
+#endif

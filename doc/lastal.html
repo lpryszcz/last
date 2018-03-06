@@ -329,9 +329,10 @@ lastal humanDb dna*.fasta &gt; myalns.maf
 writes several files whose names begin with <tt class="docutils literal">humanDb</tt>.  The lastal
 command reads files called <tt class="docutils literal"><span class="pre">dna*.fasta</span></tt>, compares them to
 <tt class="docutils literal">humanDb</tt>, and writes alignments to a file called <tt class="docutils literal">myalns.maf</tt>.</p>
-<p>You can also pipe query sequences into lastal, for example:</p>
+<p>You can use gzip (.gz) compressed query files.  You can also pipe
+query sequences into lastal, for example:</p>
 <pre class="literal-block">
-zcat seqs.fasta.gz | lastal humanDb &gt; myalns.maf
+bzcat seqs.fasta.bz2 | lastal humanDb &gt; myalns.maf
 </pre>
 <div class="section" id="steps-in-lastal">
 <h2>Steps in lastal</h2>
@@ -412,9 +413,10 @@ coordinates are one-based.  <em>Warning:</em> this is a lossy format,
 because it does not show gap positions.  <em>Warning:</em> the other
 LAST programs cannot read this format.  <em>Warning:</em> <a class="reference external" href="last-evalues.html">&quot;bit score&quot;
 is not the same as &quot;score&quot;</a>.</p>
-<p><strong>BlastTab+</strong> format is the same as BlastTab, with 2 extra
-columns at the end: length of query sequence and length of
-reference sequence.  More columns might be added in future.</p>
+<p><strong>BlastTab+</strong> format is the same as BlastTab, with 3 extra
+columns at the end: length of query sequence, length of
+reference sequence, and (raw) score.  More columns might be
+added in future.</p>
 <p class="last">For backwards compatibility, a NAME of 0 means TAB and 1 means
 MAF.</p>
 </td></tr>
@@ -515,10 +517,14 @@ looks like this:</p>
 </td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-x <var>DROP</var></span></kbd></td>
-<td>Maximum score drop for gapped alignments.  Gapped alignments are
+<td><p class="first">Maximum score drop for gapped alignments.  Gapped alignments are
 forbidden from having any internal region with score &lt; -DROP.
 This serves two purposes: accuracy (avoid spurious internal
-regions in alignments) and speed (the smaller the faster).</td></tr>
+regions in alignments) and speed (the smaller the faster).</p>
+<p class="last">You can specify either a score (e.g. -x20), or a percentage; for
+example, -x50% specifies 50% of the default value (rounded down
+to the nearest integer).</p>
+</td></tr>
 <tr><td class="option-group">
 <kbd><span class="option">-y <var>DROP</var></span></kbd></td>
 <td>Maximum score drop for gapless alignments.</td></tr>

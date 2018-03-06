@@ -42,9 +42,6 @@ struct Alphabet{
   // return the position after the last written position in dest
   char* rtCopy( const uchar* beg, const uchar* end, char* dest ) const;
 
-  // reverse and complement a sequence of numbers, in place
-  void rc( uchar* beg, uchar* end ) const;
-
   std::string letters;    // the "proper" letters, e.g. ACGT for DNA
   unsigned size;          // same as letters.size(): excludes delimiters
   uchar encode[capacity];  // translate ASCII letters to codes (small integers)

@@ -51,14 +51,6 @@ char* Alphabet::rtCopy( const uchar* beg, const uchar* end, char* dest ) const{
   return dest;
 }
 
-void Alphabet::rc( uchar* beg, uchar* end ) const{
-  std::reverse( beg, end );
-
-  for( /* noop */; beg < end; ++beg ){
-    *beg = complement[ *beg ];
-  }
-}
-
 void Alphabet::init(){
   for( std::string::iterator i = letters.begin(); i < letters.end(); ++i )
     *i = std::toupper( *i );
@@ -102,6 +94,11 @@ void Alphabet::initCaseConversions( unsigned codeEnd ) {
   for( unsigned i = codeEnd; i < capacity; ++i ){
     numbersToUppercase[i] = i;
     numbersToLowercase[i] = i;
+  }
+
+  if (letters == dna) {  // kludge for RNA:
+    encode['U'] = encode['T'];
+    encode['u'] = encode['t'];
   }
 
   for( unsigned i = 0; i < capacity; ++i ){

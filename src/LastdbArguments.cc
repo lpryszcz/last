@@ -2,7 +2,7 @@
 
 #include "LastdbArguments.hh"
 #include "stringify.hh"
-#include <unistd.h>  // getopt
+#include "getoptUtil.hh"
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>  // EXIT_SUCCESS
@@ -31,6 +31,7 @@ LastdbArguments::LastdbArguments() :
   tantanSetting(0),
   isCaseSensitive(false),
   seedPatterns(0),
+  strand(1),
   volumeSize(-1),
   indexStep(1),
   minimizerWindow(1),
@@ -66,9 +67,11 @@ Advanced Options (default settings):\n\
     + stringify(indexStep) + ")\n\
 -W: use \"minimum\" positions in sliding windows of W consecutive positions ("
     + stringify(minimizerWindow) + ")\n\
+-S: strand: 0=reverse, 1=forward, 2=both ("
+    + stringify(strand) + ")\n\
 -s: volume size (unlimited)\n\
 -Q: input format: 0=fasta, 1=fastq-sanger, 2=fastq-solexa, 3=fastq-illumina ("
-      + stringify(inputFormat) + ")\n\
+    + stringify(inputFormat) + ")\n\
 -P: number of parallel threads ("
     + stringify(numOfThreads) + ")\n\
 -m: seed pattern\n\
@@ -86,9 +89,10 @@ Report bugs to: last-align (ATmark) googlegroups (dot) com\n\
 LAST home page: http://last.cbrc.jp/\n\
 ";
 
-  optind = 1;  // allows us to scan arguments more than once(???)
+  static const char sOpts[] = "hVpR:cm:S:s:w:W:P:u:a:i:b:C:xvQ:";
+
   int c;
-  while( (c = myGetopt(argc, argv, "hVpR:cm:s:w:W:P:u:a:i:b:C:xvQ:")) != -1 ) {
+  while ((c = myGetopt(argc, argv, sOpts)) != -1) {
     switch(c){
     case 'h':
       std::cout << help;
@@ -113,6 +117,10 @@ LAST home page: http://last.cbrc.jp/\n\
       break;
     case 'm':
       seedPatterns.push_back(optarg);
+      break;
+    case 'S':
+      unstringify( strand, optarg );
+      if( strand < 0 || strand > 2 ) badopt( c, optarg );
       break;
     case 's':
       unstringifySize( volumeSize, optarg );
@@ -159,11 +167,14 @@ LAST home page: http://last.cbrc.jp/\n\
     }
   }
 
-  if( isOptionsOnly ) return;
-  if( optind >= argc )
-    ERR( "please give me an output name and sequence file(s)\n\n" + usage );
-  lastdbName = argv[optind++];
-  inputStart = optind;
+  if( !isOptionsOnly ){
+    if( optind >= argc )
+      ERR( "please give me an output name and sequence file(s)\n\n" + usage );
+    lastdbName = argv[optind++];
+    inputStart = optind;
+  }
+
+  resetGetopt();
 }
 
 void LastdbArguments::fromLine( const std::string& line ){

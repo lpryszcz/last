@@ -390,7 +390,7 @@ void SplitAligner::traceBack(long viterbiScore,
     // procedure for tied scores?
 
     bool isStay = (score == Vmat[ij] + Dmat[ij]);
-    if (isStay && alns[i].qstrand == '+') continue;
+    if (isStay && alns[i].isForwardStrand()) continue;
 
     long s = score - spliceEndScore(ij);
     long t = s - restartScore;
@@ -736,7 +736,7 @@ void SplitAligner::initSpliceSignals(unsigned i) {
   unsigned char *endSignals = &spliceEndSignals[rowBeg];
   unsigned dpLen = dpEnd(i) - dpBeg(i);
 
-  if (a.qstrand == '+') {
+  if (a.isForwardStrand()) {
     for (unsigned j = 0; j <= dpLen; ++j) {
       begSignals[j] = spliceBegSignalFwd(chromBeg + begCoords[j], toUnmasked);
       endSignals[j] = spliceEndSignalFwd(chromBeg + endCoords[j], toUnmasked);
@@ -783,7 +783,7 @@ void SplitAligner::spliceBegSignal(char *out,
 				   unsigned alnNum, unsigned queryPos,
 				   bool isSenseStrand) const {
   const UnsplitAlignment& a = alns[alnNum];
-  bool isForwardStrand = (a.qstrand == '+');
+  bool isForwardStrand = a.isForwardStrand();
   StringNumMap::const_iterator f = chromosomeIndex.find(a.rname);
   size_t v = f->second % maxGenomeVolumes();
   size_t c = f->second / maxGenomeVolumes();
@@ -799,7 +799,7 @@ void SplitAligner::spliceEndSignal(char *out,
 				   unsigned alnNum, unsigned queryPos,
 				   bool isSenseStrand) const {
   const UnsplitAlignment& a = alns[alnNum];
-  bool isForwardStrand = (a.qstrand == '+');
+  bool isForwardStrand = a.isForwardStrand();
   StringNumMap::const_iterator f = chromosomeIndex.find(a.rname);
   size_t v = f->second % maxGenomeVolumes();
   size_t c = f->second / maxGenomeVolumes();
@@ -1194,6 +1194,8 @@ void SplitAligner::readGenomeVolume(const std::string& baseName,
   genome[volumeNumber].fromFiles(baseName, seqCount, 0);
 
   for (unsigned long long i = 0; i < seqCount; ++i) {
+    char s = genome[volumeNumber].strand(i);
+    if (s == '-') continue;
     std::string n = genome[volumeNumber].seqName(i);
     unsigned long long j = i * maxGenomeVolumes() + volumeNumber;
     if (!chromosomeIndex.insert(std::make_pair(n, j)).second)

@@ -2,7 +2,7 @@
 
 #include "CyclicSubsetSeed.hh"
 #include "CyclicSubsetSeedData.hh"
-#include "io.hh"
+#include "zio.hh"
 #include "stringify.hh"
 #include <algorithm>  // sort
 #include <sstream>
@@ -23,7 +23,7 @@ std::string CyclicSubsetSeed::stringFromName( const std::string& name ){
     if( name == subsetSeeds[i].name )
       return subsetSeeds[i].text;
 
-  return slurp( name );
+  return slurp( name.c_str() );
 }
 
 std::string
@@ -122,8 +122,9 @@ void CyclicSubsetSeed::appendPosition( std::istream& inputLine,
     std::string subset;
 
     for( size_t i = 0; i < inputWord.size(); ++i ){
-      uchar upper = std::toupper( inputWord[i] );
-      uchar lower = std::tolower( inputWord[i] );
+      uchar c = inputWord[i];
+      uchar upper = std::toupper(c);
+      uchar lower = std::tolower(c);
       addLetter( &numbersToSubsets[0], upper, subsetNum, letterCode );
       subset += upper;
       if( !isMaskLowercase && lower != upper ){
